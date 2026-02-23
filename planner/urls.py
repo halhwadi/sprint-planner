@@ -12,6 +12,7 @@ urlpatterns = [
     path('vote/<int:us_id>/submit/', views.submit_vote, name='submit_vote'),
     # SM
     path('sm/pick-member/', views.sm_pick_member, name='sm_pick_member'),
+    path('sm/panel/', views.sm_panel, name='sm_panel'),
     path('sm/members/add/', views.add_member, name='add_member'),
     path('sm/members/<int:member_id>/remove/', views.remove_member, name='remove_member'),
     path('sm/stories/add/', views.add_story, name='add_story'),
