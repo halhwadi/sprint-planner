@@ -1,11 +1,12 @@
 {% extends 'planner/base.html' %}
 {% block title %}Vote - {{ story.title }}{% endblock %}
 {% block content %}
-<div class="container" style="max-width:800px;">
+<div class="container" style="max-width:900px;">
   <div class="mt-2 mb-4">
     <a href="{% url 'board' %}" class="text-sm text-muted">← Back to Board</a>
   </div>
 
+  <!-- Story Card -->
   <div class="card">
     <div class="flex items-center justify-between" style="flex-wrap:wrap;gap:12px;">
       <div>
@@ -14,90 +15,184 @@
       </div>
       <div class="flex gap-2 items-center flex-wrap">
         <span class="badge badge-{{ story.voting_status }}" id="statusBadge">
-          {% if story.voting_status == 'voting' %}🗳️ Voting Open{% elif story.voting_status == 'closed' %}✅ Closed{% else %}⏳ Pending{% endif %}
+          {% if story.voting_status == 'voting' %}🗳️ Voting Open
+          {% elif story.voting_status == 'closed' %}✅ Closed
+          {% else %}⏳ Pending{% endif %}
         </span>
         {% if story.owner %}<span class="badge" style="background:#1e3a5f;color:var(--blue);">👤 {{ story.owner.name }}</span>{% endif %}
+        {% if story.sprint %}<span class="tag">📅 {{ story.sprint.name }}</span>{% endif %}
         {% if story.involved_streams %}
           {% for s in story.involved_streams %}<span class="tag">{{ s }}</span>{% endfor %}
         {% endif %}
       </div>
     </div>
+    {% if story.final_sp %}
+    <div class="mt-2">
+      <span class="text-sm text-muted">Final SP: </span>
+      <span class="sp-chip" style="display:inline-flex;">{{ story.final_sp }}</span>
+    </div>
+    {% endif %}
   </div>
 
+  <!-- SM Controls -->
   {% if is_sm %}
   <div class="card" style="background:linear-gradient(135deg,#1a1d27,#22263a);">
     <div class="section-title">👑 Scrum Master Controls</div>
     <div class="flex gap-3 flex-wrap">
-      {% if story.voting_status != 'voting' %}
-      <button class="btn btn-success" onclick="triggerVoting()">🗳️ Start Voting</button>
+      {% if story.voting_status == 'pending' or story.voting_status == 'closed' %}
+      <button class="btn btn-success" onclick="triggerVoting()">🗳️ {% if story.voting_status == 'closed' %}Re-open{% else %}Start{% endif %} Voting</button>
       {% endif %}
       {% if story.voting_status == 'voting' %}
       <button class="btn btn-warning" onclick="closeVoting()">🔒 Close Voting</button>
       {% endif %}
-      <a href="{% url 'board' %}" class="btn btn-ghost">🎯 Go to Board (Assign SP)</a>
-    </div>
-    <div id="avgResult" class="mt-3 text-sm" style="display:none;background:var(--surface);border-radius:8px;padding:12px;">
-      Vote Average: <strong id="avgValue" style="font-size:1.2rem;color:var(--accent2);"></strong>
-      <span class="text-muted"> — Go to board to assign final SP</span>
+      <button class="btn btn-primary" onclick="openAssignSP()">🎯 Assign Story Points</button>
     </div>
   </div>
   {% endif %}
 
   <!-- My Vote -->
-  {% if member %}
+  {% if is_sm and not member %}
+  <div class="card" style="border-color:var(--yellow);">
+    <div class="section-title">⚠️ You haven't picked your member identity</div>
+    <p class="text-sm text-muted mb-3">You need to select your team member name to vote.</p>
+    <a href="{% url 'sm_pick_member' %}" class="btn btn-warning">Pick My Identity →</a>
+  </div>
+  {% elif member %}
   <div class="card" id="myVoteCard">
-    <div class="section-title">🗳️ Your Vote</div>
+    <div class="section-title">🗳️ Your Vote — {{ member.name }}</div>
     {% if story.voting_status == 'voting' %}
     <div style="display:flex;gap:12px;flex-wrap:wrap;">
       {% for f in fibonacci %}
       <button class="btn {% if my_vote and my_vote.points == f %}btn-primary{% else %}btn-ghost{% endif %} fib-btn"
-              data-points="{{ f }}" onclick="submitVote({{ f }}, this)">
+              data-points="{{ f }}" onclick="submitVote({{ f }}, this)" style="width:52px;height:52px;font-size:1.1rem;font-weight:700;border-radius:8px;justify-content:center;">
         {{ f }}
       </button>
       {% endfor %}
     </div>
     <div id="myVoteStatus" class="mt-2 text-sm text-muted">
-      {% if my_vote %}✅ You voted: <strong>{{ my_vote.points }}</strong>{% else %}Choose your estimate above{% endif %}
+      {% if my_vote %}✅ You voted: <strong>{{ my_vote.points }}</strong> — you can change it while voting is open{% else %}Choose your estimate above{% endif %}
     </div>
     {% elif story.voting_status == 'closed' %}
     <div>
-      {% if my_vote %}Your vote: <strong style="color:var(--accent2);font-size:1.1rem;">{{ my_vote.points }}</strong>{% else %}<span class="text-muted">You didn't vote</span>{% endif %}
+      {% if my_vote %}Your vote: <strong style="color:var(--accent2);font-size:1.1rem;">{{ my_vote.points }}</strong>{% else %}<span class="text-muted">You didn't vote on this story</span>{% endif %}
     </div>
     {% else %}
-    <div class="text-muted text-sm">Voting hasn't started yet. Wait for the Scrum Master to open voting.</div>
+    <div class="text-muted text-sm">Voting hasn't started yet. Wait for the Scrum Master.</div>
     {% endif %}
   </div>
   {% endif %}
 
-  <!-- Team Votes Status -->
+  <!-- Results (shown when closed) -->
+  <div id="resultsCard" class="card" style="{% if story.voting_status != 'closed' %}display:none;{% endif %}">
+    <div class="section-title">📊 Voting Results</div>
+    <div class="grid-2" style="gap:16px;margin-bottom:16px;">
+      <!-- Overall Average -->
+      <div style="background:var(--surface);border-radius:10px;padding:16px;text-align:center;border:1px solid var(--accent);">
+        <div class="text-muted text-sm">Overall Average</div>
+        <div style="font-size:3rem;font-weight:800;color:var(--accent2);margin:8px 0;" id="bigAvg">{{ story.vote_average|default:"—" }}</div>
+        <div class="text-sm text-muted">across all streams</div>
+      </div>
+      <!-- Stream Averages -->
+      <div style="background:var(--surface);border-radius:10px;padding:16px;border:1px solid var(--border);">
+        <div class="text-muted text-sm mb-3" style="font-weight:600;">Per Stream Averages</div>
+        <div id="streamAvgList">
+          {% comment %}populated by JS poll{% endcomment %}
+        </div>
+      </div>
+    </div>
+    <!-- Individual votes breakdown -->
+    <div id="voteBreakdownTable"></div>
+  </div>
+
+  <!-- Team Vote Status (live) -->
   <div class="card">
     <div class="flex items-center justify-between mb-3">
       <div class="section-title" style="margin:0;">👥 Team Votes</div>
-      <div class="text-sm text-muted"><span id="votedCount">0</span> / <span id="totalCount">0</span> voted</div>
+      <div class="text-sm" style="color:var(--accent2);font-weight:600;">
+        <span id="votedCount">0</span> / <span id="totalCount">0</span> voted
+      </div>
     </div>
-    <div id="votesList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;"></div>
-  </div>
-
-  <!-- Results (shown when closed) -->
-  <div id="resultsCard" class="card" style="display:none;">
-    <div class="section-title">📊 Results</div>
-    <div style="text-align:center;padding:16px;">
-      <div class="text-muted text-sm">Vote Average</div>
-      <div style="font-size:3rem;font-weight:800;color:var(--accent2);margin:8px 0;" id="bigAvg">—</div>
-    </div>
-    <div id="voteBreakdown"></div>
+    <div id="votesList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px;"></div>
   </div>
 </div>
 
+<!-- Assign SP Modal (SM only) -->
+{% if is_sm %}
+<div class="modal-overlay" id="assignSPModal">
+  <div class="modal" style="max-width:640px;">
+    <h3>🎯 Assign Story Points — {{ story.title }}</h3>
+
+    <!-- Reference -->
+    <div style="background:var(--surface);border-radius:8px;padding:12px;margin-bottom:16px;">
+      <div class="text-sm text-muted mb-2" style="font-weight:600;">Reference — Vote Results</div>
+      <div class="flex gap-3 flex-wrap" id="modalStreamAvgs">
+        <span class="text-muted text-sm">Close voting first to see averages</span>
+      </div>
+      <div class="mt-2 text-sm">Overall avg: <strong id="modalOverallAvg" style="color:var(--accent2);">{{ story.vote_average|default:"—" }}</strong></div>
+    </div>
+
+    <!-- US Story Point → Owner -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;">
+      <div class="text-sm" style="font-weight:600;margin-bottom:8px;">📌 User Story SP → assigned to owner's bandwidth</div>
+      <div class="flex gap-3 items-center">
+        <div style="flex:1;">
+          <label>Owner</label>
+          <div style="padding:8px 12px;background:var(--surface);border-radius:8px;font-size:0.875rem;color:var(--accent2);">
+            {% if story.owner %}👤 {{ story.owner.name }} ({{ story.owner.stream }}){% else %}<span class="text-muted">No owner assigned — edit story first</span>{% endif %}
+          </div>
+        </div>
+        <div style="width:120px;">
+          <label>Final SP</label>
+          <input type="number" id="finalSP" value="{{ story.final_sp|default:'' }}" min="0" step="0.5" placeholder="e.g. 5">
+        </div>
+      </div>
+    </div>
+
+    <!-- Stream Assignments -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-sm" style="font-weight:600;">🔀 Stream SP Assignments → each assigned to a team member</div>
+        <button class="btn btn-ghost btn-sm" onclick="addStreamRow()">+ Add Row</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 2fr 80px 32px;gap:8px;margin-bottom:6px;">
+        <div class="text-sm text-muted">Stream</div>
+        <div class="text-sm text-muted">Assigned To</div>
+        <div class="text-sm text-muted">SP</div>
+        <div></div>
+      </div>
+      <div id="streamRows"></div>
+    </div>
+
+    <div class="modal-actions mt-3">
+      <button class="btn btn-ghost" onclick="closeModal('assignSPModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAssignSP()">💾 Save SP Assignments</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <script>
-let pollInterval;
 const storyId = {{ story.id }};
 const isSM = {{ is_sm|yesno:'true,false' }};
-const currentStatus = '{{ story.voting_status }}';
+const ALL_MEMBERS = [{% for m in all_members %}{"id":{{m.id}},"name":"{{m.name}}","stream":"{{m.stream}}"},{% endfor %}];
+const ALL_STREAMS = [{% for s in streams %}"{{s}}",{% endfor %}];
+let pollInterval;
+let latestStreamAvgs = [];
+let rowCount = 0;
 
 function getFibColor(p) {
-  const colors = {1:'#22c55e',2:'#84cc16',3:'#eab308',5:'#f97316',8:'#ef4444',13:'#a855f7'};
-  return colors[p] || '#6366f1';
+  return {1:'#22c55e',2:'#84cc16',3:'#eab308',5:'#f97316',8:'#ef4444',13:'#a855f7'}[p] || '#6366f1';
+}
+
+function renderStreamAvgList(avgs, containerId) {
+  const el = document.getElementById(containerId);
+  if (!avgs || !avgs.length) { el.innerHTML = '<span class="text-muted text-sm">No votes yet</span>'; return; }
+  el.innerHTML = avgs.map(s => `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:6px 12px;text-align:center;min-width:80px;">
+      <div style="font-size:0.7rem;color:var(--muted);font-weight:600;">${s.stream}</div>
+      <div style="font-size:1.3rem;font-weight:800;color:var(--accent2);">${s.average}</div>
+      <div style="font-size:0.7rem;color:var(--muted);">${s.votes} vote${s.votes>1?'s':''}</div>
+    </div>`).join('');
 }
 
 async function pollVotes() {
@@ -105,6 +200,7 @@ async function pollVotes() {
   document.getElementById('votedCount').textContent = data.voted_count;
   document.getElementById('totalCount').textContent = data.total_members;
 
+  // Team grid
   const list = document.getElementById('votesList');
   list.innerHTML = data.members.map(m => `
     <div style="background:var(--surface);border-radius:8px;padding:10px;border:1px solid ${m.voted ? 'var(--green)' : 'var(--border)'};">
@@ -112,20 +208,19 @@ async function pollVotes() {
         <span style="font-size:0.85rem;font-weight:600;">${m.name}</span>
         ${m.voted
           ? (data.status === 'closed' && m.points != null
-              ? `<span style="background:${getFibColor(m.points)};color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;">${m.points}</span>`
-              : '<span style="color:var(--green);font-size:0.8rem;">✅ Voted</span>')
-          : '<span style="color:var(--muted);font-size:0.8rem;">⏳ Waiting</span>'}
+              ? `<span style="background:${getFibColor(m.points)};color:#fff;border-radius:6px;padding:2px 8px;font-weight:700;font-size:0.9rem;">${m.points}</span>`
+              : '<span style="color:var(--green);font-size:0.8rem;">✅</span>')
+          : '<span style="color:var(--muted);font-size:0.8rem;">⏳</span>'}
       </div>
       <div style="font-size:0.75rem;color:var(--muted);margin-top:2px;">${m.stream}</div>
     </div>`).join('');
 
+  // Results
   if (data.status === 'closed') {
     document.getElementById('resultsCard').style.display = 'block';
     document.getElementById('bigAvg').textContent = data.average || '—';
-    if (isSM && data.average) {
-      document.getElementById('avgResult').style.display = 'block';
-      document.getElementById('avgValue').textContent = data.average;
-    }
+    latestStreamAvgs = data.stream_averages || [];
+    renderStreamAvgList(latestStreamAvgs, 'streamAvgList');
     clearInterval(pollInterval);
   }
 }
@@ -133,18 +228,15 @@ async function pollVotes() {
 async function submitVote(points, btn) {
   const res = await api(`/vote/${storyId}/submit/`, 'POST', { points });
   if (res.ok) {
-    document.querySelectorAll('.fib-btn').forEach(b => b.classList.remove('btn-primary'));
-    document.querySelectorAll('.fib-btn').forEach(b => b.classList.add('btn-ghost'));
-    btn.classList.remove('btn-ghost');
-    btn.classList.add('btn-primary');
-    document.getElementById('myVoteStatus').innerHTML = `✅ You voted: <strong>${points}</strong>`;
-    toast('Vote submitted!', 'success');
+    document.querySelectorAll('.fib-btn').forEach(b => { b.classList.remove('btn-primary'); b.classList.add('btn-ghost'); });
+    btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
+    document.getElementById('myVoteStatus').innerHTML = `✅ You voted: <strong>${points}</strong> — you can change it while voting is open`;
     pollVotes();
   } else toast(res.error || 'Error', 'error');
 }
 
 async function triggerVoting() {
-  if (!confirm('Start voting for this story? Previous votes will be cleared.')) return;
+  if (!confirm('Start voting? Previous votes will be cleared.')) return;
   const res = await api(`/sm/stories/${storyId}/trigger-voting/`, 'POST');
   if (res.ok) { toast('Voting started!', 'success'); location.reload(); }
 }
@@ -152,15 +244,76 @@ async function triggerVoting() {
 async function closeVoting() {
   const res = await api(`/sm/stories/${storyId}/close-voting/`, 'POST');
   if (res.ok) {
-    toast('Voting closed. Average: ' + res.average, 'success');
-    pollVotes();
-    document.getElementById('avgResult').style.display = 'block';
-    document.getElementById('avgValue').textContent = res.average;
-    setTimeout(() => location.reload(), 1500);
+    toast('Voting closed. Overall avg: ' + res.average, 'success');
+    await pollVotes();
   }
 }
 
-// Start polling
+// --- SP Assignment ---
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+async function openAssignSP() {
+  // Load latest story detail for existing assignments
+  const res = await api(`/api/stories/${storyId}/`);
+  document.getElementById('finalSP').value = res.final_sp || '';
+  document.getElementById('modalOverallAvg').textContent = res.vote_average || '—';
+  renderStreamAvgList(latestStreamAvgs, 'modalStreamAvgs');
+
+  // Populate stream rows
+  document.getElementById('streamRows').innerHTML = '';
+  rowCount = 0;
+  if (res.stream_assignments.length > 0) {
+    res.stream_assignments.forEach(sa => addStreamRow(sa.stream, sa.member_id, sa.sp));
+  } else {
+    addStreamRow(); // start with one empty row
+  }
+  openModal('assignSPModal');
+}
+
+function addStreamRow(stream='', memberId='', sp='') {
+  const id = rowCount++;
+  const streamOpts = ALL_STREAMS.map(s => `<option value="${s}" ${s===stream?'selected':''}>${s}</option>`).join('');
+  const memberOpts = ALL_MEMBERS.map(m => `<option value="${m.id}" ${m.id==memberId?'selected':''}>${m.name} (${m.stream})</option>`).join('');
+  const row = document.createElement('div');
+  row.id = `sr-${id}`;
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 2fr 80px 32px;gap:8px;margin-bottom:8px;align-items:center;';
+  row.innerHTML = `
+    <select class="sa-stream">${streamOpts}</select>
+    <select class="sa-member"><option value="">-- Member --</option>${memberOpts}</select>
+    <input type="number" class="sa-sp" value="${sp}" min="0" step="0.5" placeholder="SP">
+    <button class="btn btn-ghost btn-sm" style="padding:4px;justify-content:center;" onclick="document.getElementById('sr-${id}').remove()">✕</button>`;
+  document.getElementById('streamRows').appendChild(row);
+}
+
+async function submitAssignSP() {
+  const finalSP = document.getElementById('finalSP').value;
+  const rows = document.querySelectorAll('#streamRows > div');
+  const stream_assignments = [];
+  for (const row of rows) {
+    const stream = row.querySelector('.sa-stream').value;
+    const member_id = row.querySelector('.sa-member').value;
+    const sp = row.querySelector('.sa-sp').value;
+    if (stream && member_id && sp) {
+      stream_assignments.push({ stream, member_id: parseInt(member_id), sp: parseFloat(sp) });
+    }
+  }
+  const res = await api(`/sm/stories/${storyId}/assign-sp/`, 'POST', {
+    final_sp: finalSP ? parseFloat(finalSP) : null,
+    stream_assignments
+  });
+  if (res.ok) {
+    toast('SP assignments saved!', 'success');
+    closeModal('assignSPModal');
+    setTimeout(() => location.reload(), 800);
+  } else toast(res.error, 'error');
+}
+
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+// Init
 pollVotes();
 if ('{{ story.voting_status }}' === 'voting') {
   pollInterval = setInterval(pollVotes, 3000);

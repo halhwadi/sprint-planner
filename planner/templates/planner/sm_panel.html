@@ -3,15 +3,52 @@
 {% block content %}
 <div class="container">
   <h1 style="font-size:1.4rem;font-weight:700;margin:16px 0 4px;">👑 Scrum Master Panel</h1>
-  <p class="text-muted text-sm mb-4">Manage team members and sprint stories</p>
+  <p class="text-muted text-sm mb-4">Manage sprints, team members and stories</p>
 
   <div class="grid-2">
+
+    <!-- Sprints -->
+    <div style="grid-column:span 2;">
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <div class="section-title" style="margin:0;">📅 Sprints</div>
+          <button class="btn btn-primary btn-sm" onclick="openModal('addSprintModal')">+ New Sprint</button>
+        </div>
+        {% if sprints %}
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
+          {% for s in sprints %}
+          <div style="background:var(--surface);border-radius:8px;padding:14px;border:1px solid {% if s.is_active %}var(--green){% else %}var(--border){% endif %};">
+            <div class="flex items-center justify-between mb-2">
+              <span style="font-weight:600;">{{ s.name }}</span>
+              {% if s.is_active %}<span class="badge" style="background:#1a3320;color:var(--green);">🟢 Active</span>{% endif %}
+            </div>
+            {% if s.goal %}<div class="text-sm text-muted mb-2">{{ s.goal }}</div>{% endif %}
+            <div class="text-sm text-muted mb-3">
+              {{ s.user_stories.count }} stories · {{ s.total_sp }} SP
+              {% if s.start_date %}<br>{{ s.start_date }} → {{ s.end_date }}{% endif %}
+            </div>
+            <div class="flex gap-2">
+              {% if not s.is_active %}
+              <button class="btn btn-success btn-sm" onclick="setActiveSprint({{ s.id }})">Set Active</button>
+              {% endif %}
+              <button class="btn btn-ghost btn-sm" onclick="openEditSprint({{ s.id }}, '{{ s.name }}', '{{ s.goal }}', '{{ s.start_date }}', '{{ s.end_date }}', {{ s.is_active|yesno:'true,false' }})">✏️ Edit</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteSprint({{ s.id }}, '{{ s.name }}')">🗑️</button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-muted text-sm">No sprints yet. Create your first sprint.</div>
+        {% endif %}
+      </div>
+    </div>
+
     <!-- Team Members -->
     <div>
       <div class="card">
         <div class="flex items-center justify-between mb-4">
-          <div class="section-title" style="margin:0;">👥 Sprint Team Members ({{ members.count }})</div>
-          <button class="btn btn-primary btn-sm" onclick="openModal('addMemberModal')">+ Add Member</button>
+          <div class="section-title" style="margin:0;">👥 Team Members ({{ members.count }})</div>
+          <button class="btn btn-primary btn-sm" onclick="openModal('addMemberModal')">+ Add</button>
         </div>
         {% regroup members by stream as stream_groups %}
         {% for group in stream_groups %}
@@ -33,7 +70,7 @@
     <!-- Bandwidth -->
     <div>
       <div class="card">
-        <div class="section-title">📊 Bandwidth Summary</div>
+        <div class="section-title">📊 Bandwidth{% if active_sprint %} — {{ active_sprint.name }}{% endif %}</div>
         {% for bw in bandwidth %}
         <div style="margin-bottom:12px;">
           <div class="flex items-center justify-between mb-1">
@@ -50,52 +87,94 @@
       </div>
     </div>
 
-    <!-- Stories Management -->
+    <!-- Stories -->
     <div style="grid-column:span 2;">
       <div class="card">
         <div class="flex items-center justify-between mb-4">
-          <div class="section-title" style="margin:0;">📋 User Stories ({{ stories.count }})</div>
-          <div class="flex gap-2">
-            <a href="{% url 'board' %}" class="btn btn-ghost btn-sm">View Board</a>
-          </div>
+          <div class="section-title" style="margin:0;">📋 All User Stories ({{ stories.count }})</div>
+          <a href="{% url 'board' %}" class="btn btn-ghost btn-sm">View Board</a>
         </div>
-        {% for story in stories %}
-        <div style="background:var(--surface);border-radius:8px;padding:14px;margin-bottom:10px;border:1px solid var(--border);">
-          <div class="flex items-center justify-between" style="flex-wrap:wrap;gap:8px;">
-            <div class="flex items-center gap-3">
-              <div class="sp-chip {% if not story.final_sp %}none{% endif %}">{{ story.final_sp|default:"?" }}</div>
-              <div>
-                <div style="font-weight:600;">{{ story.title }}</div>
-                <div class="text-sm text-muted">
-                  {% if story.owner %}Owner: {{ story.owner.name }}{% else %}No owner{% endif %}
-                  {% if story.vote_average %} · Avg: {{ story.vote_average }}{% endif %}
+        {% regroup stories by sprint as sprint_groups %}
+        {% for group in sprint_groups %}
+        <div class="mb-4">
+          <div style="font-size:0.8rem;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding:4px 0;border-bottom:1px solid var(--border);">
+            📅 {% if group.grouper %}{{ group.grouper }}{% else %}No Sprint{% endif %}
+          </div>
+          {% for story in group.list %}
+          <div style="background:var(--surface);border-radius:8px;padding:12px;margin-bottom:8px;border:1px solid var(--border);">
+            <div class="flex items-center justify-between" style="flex-wrap:wrap;gap:8px;">
+              <div class="flex items-center gap-3">
+                <div class="sp-chip {% if not story.final_sp %}none{% endif %}">{{ story.final_sp|default:"?" }}</div>
+                <div>
+                  <div style="font-weight:600;font-size:0.875rem;">{{ story.title }}</div>
+                  <div class="text-sm text-muted">
+                    {% if story.owner %}Owner: {{ story.owner.name }}{% else %}No owner{% endif %}
+                    {% if story.vote_average %} · Avg: {{ story.vote_average }}{% endif %}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="flex gap-2 flex-wrap">
-              <span class="badge badge-{{ story.voting_status }}">{{ story.get_voting_status_display }}</span>
-              <a href="{% url 'vote_room' story.id %}" class="btn btn-ghost btn-sm">🗳️ Voting Room</a>
-              {% if story.voting_status == 'pending' %}
-              <button class="btn btn-success btn-sm" onclick="triggerVoting({{ story.id }})">▶ Start Vote</button>
-              {% elif story.voting_status == 'voting' %}
-              <button class="btn btn-warning btn-sm" onclick="closeVoting({{ story.id }})">🔒 Close Vote</button>
-              {% endif %}
+              <div class="flex gap-2 flex-wrap">
+                <span class="badge badge-{{ story.voting_status }}">{{ story.get_voting_status_display }}</span>
+                <a href="{% url 'vote_room' story.id %}" class="btn btn-ghost btn-sm">🗳️ Vote Room</a>
+                {% if story.voting_status == 'pending' %}
+                <button class="btn btn-success btn-sm" onclick="triggerVoting({{ story.id }})">▶ Start</button>
+                {% elif story.voting_status == 'voting' %}
+                <button class="btn btn-warning btn-sm" onclick="closeVoting({{ story.id }})">🔒 Close</button>
+                {% endif %}
+              </div>
             </div>
           </div>
-          {% if story.stream_assignments.all %}
-          <div class="mt-2" style="display:flex;flex-wrap:wrap;gap:6px;">
-            {% for sa in story.stream_assignments.all %}
-            <span style="font-size:0.75rem;background:var(--card);border:1px solid var(--border);border-radius:4px;padding:2px 8px;">
-              {{ sa.stream }}: {{ sa.member.name }} <strong>{{ sa.sp }}SP</strong>
-            </span>
-            {% endfor %}
-          </div>
-          {% endif %}
+          {% endfor %}
         </div>
         {% empty %}
-        <div class="text-muted text-sm">No stories. Add them from the Board.</div>
+        <div class="text-muted text-sm">No stories yet.</div>
         {% endfor %}
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Sprint Modal -->
+<div class="modal-overlay" id="addSprintModal">
+  <div class="modal">
+    <h3>📅 New Sprint</h3>
+    <div class="form-group"><label>Sprint Name *</label><input type="text" id="sprintName" placeholder="e.g. Sprint 42"></div>
+    <div class="form-group"><label>Goal (optional)</label><textarea id="sprintGoal" rows="2" placeholder="What do we aim to deliver?"></textarea></div>
+    <div class="grid-2" style="gap:12px;">
+      <div class="form-group"><label>Start Date</label><input type="date" id="sprintStart"></div>
+      <div class="form-group"><label>End Date</label><input type="date" id="sprintEnd"></div>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text);">
+        <input type="checkbox" id="sprintActive" style="width:auto;"> Set as Active Sprint
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addSprintModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddSprint()">Create Sprint</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Sprint Modal -->
+<div class="modal-overlay" id="editSprintModal">
+  <div class="modal">
+    <h3>✏️ Edit Sprint</h3>
+    <input type="hidden" id="editSprintId">
+    <div class="form-group"><label>Sprint Name *</label><input type="text" id="editSprintName"></div>
+    <div class="form-group"><label>Goal</label><textarea id="editSprintGoal" rows="2"></textarea></div>
+    <div class="grid-2" style="gap:12px;">
+      <div class="form-group"><label>Start Date</label><input type="date" id="editSprintStart"></div>
+      <div class="form-group"><label>End Date</label><input type="date" id="editSprintEnd"></div>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text);">
+        <input type="checkbox" id="editSprintActive" style="width:auto;"> Active Sprint
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('editSprintModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditSprint()">Save</button>
     </div>
   </div>
 </div>
@@ -125,6 +204,54 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 document.querySelectorAll('.modal-overlay').forEach(o => {
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
 });
+
+async function submitAddSprint() {
+  const name = document.getElementById('sprintName').value.trim();
+  if (!name) { toast('Sprint name required', 'error'); return; }
+  const res = await api('/sm/sprints/add/', 'POST', {
+    name,
+    goal: document.getElementById('sprintGoal').value,
+    start_date: document.getElementById('sprintStart').value || null,
+    end_date: document.getElementById('sprintEnd').value || null,
+    is_active: document.getElementById('sprintActive').checked,
+  });
+  if (res.ok) { toast('Sprint created!', 'success'); closeModal('addSprintModal'); location.reload(); }
+  else toast(res.error, 'error');
+}
+
+function openEditSprint(id, name, goal, start, end, isActive) {
+  document.getElementById('editSprintId').value = id;
+  document.getElementById('editSprintName').value = name;
+  document.getElementById('editSprintGoal').value = goal === 'None' ? '' : goal;
+  document.getElementById('editSprintStart').value = start === 'None' ? '' : start;
+  document.getElementById('editSprintEnd').value = end === 'None' ? '' : end;
+  document.getElementById('editSprintActive').checked = isActive;
+  openModal('editSprintModal');
+}
+
+async function submitEditSprint() {
+  const id = document.getElementById('editSprintId').value;
+  const res = await api(`/sm/sprints/${id}/edit/`, 'POST', {
+    name: document.getElementById('editSprintName').value,
+    goal: document.getElementById('editSprintGoal').value,
+    start_date: document.getElementById('editSprintStart').value || null,
+    end_date: document.getElementById('editSprintEnd').value || null,
+    is_active: document.getElementById('editSprintActive').checked,
+  });
+  if (res.ok) { toast('Saved!', 'success'); closeModal('editSprintModal'); location.reload(); }
+  else toast(res.error, 'error');
+}
+
+async function setActiveSprint(id) {
+  const res = await api(`/sm/sprints/${id}/edit/`, 'POST', { is_active: true });
+  if (res.ok) { toast('Active sprint updated!', 'success'); location.reload(); }
+}
+
+async function deleteSprint(id, name) {
+  if (!confirm(`Delete sprint "${name}"? Stories will remain but lose sprint assignment.`)) return;
+  const res = await api(`/sm/sprints/${id}/delete/`, 'POST');
+  if (res.ok) { toast('Sprint deleted', 'success'); location.reload(); }
+}
 
 async function submitAddMember() {
   const name = document.getElementById('memberName').value.trim();

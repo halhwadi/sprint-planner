@@ -8,6 +8,7 @@ STREAM_CHOICES = [
     ('DevOps', 'DevOps'),
     ('SiteCore', 'SiteCore'),
     ('UX', 'UX'),
+    ('QA', 'QA'),
 ]
 
 US_STATUS = [
@@ -15,6 +16,24 @@ US_STATUS = [
     ('voting', 'Voting Open'),
     ('closed', 'Voting Closed'),
 ]
+
+
+class Sprint(models.Model):
+    name = models.CharField(max_length=100)  # e.g. "Sprint 42"
+    goal = models.TextField(blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    is_active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
+
+    def total_sp(self):
+        return sum(us.final_sp or 0 for us in self.user_stories.filter(final_sp__isnull=False))
 
 
 class SprintMember(models.Model):
@@ -26,13 +45,17 @@ class SprintMember(models.Model):
     def __str__(self):
         return f"{self.name} ({self.stream})"
 
-    def total_sp(self):
-        owned = sum(us.final_sp or 0 for us in self.owned_stories.filter(final_sp__isnull=False))
-        stream_assigned = sum(a.sp for a in self.stream_assignments.all())
-        return owned + stream_assigned
+    def total_sp(self, sprint=None):
+        owned_qs = self.owned_stories.filter(final_sp__isnull=False)
+        assigned_qs = self.stream_assignments.all()
+        if sprint:
+            owned_qs = owned_qs.filter(sprint=sprint)
+            assigned_qs = assigned_qs.filter(user_story__sprint=sprint)
+        return sum(us.final_sp or 0 for us in owned_qs) + sum(a.sp for a in assigned_qs)
 
 
 class UserStory(models.Model):
+    sprint = models.ForeignKey(Sprint, null=True, blank=True, on_delete=models.SET_NULL, related_name='user_stories')
     title = models.CharField(max_length=300)
     description = models.TextField(blank=True)
     owner = models.ForeignKey(SprintMember, null=True, blank=True, on_delete=models.SET_NULL, related_name='owned_stories')

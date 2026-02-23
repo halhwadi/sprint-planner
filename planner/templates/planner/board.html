@@ -2,22 +2,38 @@
 {% block title %}Sprint Board{% endblock %}
 {% block content %}
 <div class="container">
-  <div class="flex items-center justify-between mt-2 mb-4" style="flex-wrap:wrap;gap:12px;">
-    <div>
-      <h1 style="font-size:1.4rem;font-weight:700;">📋 Sprint Planning Board</h1>
-      <p class="text-muted text-sm mt-1">{{ stories.count }} user stories</p>
-    </div>
-    {% if is_sm %}
-    <button class="btn btn-primary" onclick="openAddStory()">+ Add User Story</button>
+
+  <!-- Sprint Selector Bar -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 20px;margin-top:16px;margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <span class="text-muted text-sm" style="font-weight:600;">📅 SPRINT:</span>
+    <a href="{% url 'board' %}" class="btn btn-sm {% if not selected_sprint %}btn-primary{% else %}btn-ghost{% endif %}">All</a>
+    {% for s in sprints %}
+    <a href="{% url 'board' %}?sprint={{ s.id }}" 
+       class="btn btn-sm {% if selected_sprint.id == s.id %}btn-primary{% else %}btn-ghost{% endif %}">
+      {{ s.name }}{% if s.is_active %} 🟢{% endif %}
+    </a>
+    {% endfor %}
+    {% if not sprints %}
+    <span class="text-muted text-sm">No sprints yet — SM can create one</span>
     {% endif %}
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+      {% if selected_sprint %}
+      <span style="font-size:0.8rem;color:var(--muted);">
+        {{ stories.count }} stories · {{ selected_sprint.total_sp }} SP total
+        {% if selected_sprint.start_date %} · {{ selected_sprint.start_date }} → {{ selected_sprint.end_date }}{% endif %}
+      </span>
+      {% endif %}
+      {% if is_sm %}
+      <button class="btn btn-primary btn-sm" onclick="openAddStory()">+ Add Story</button>
+      {% endif %}
+    </div>
   </div>
 
   <div class="grid-2">
-    <!-- LEFT: User Stories -->
-    <div style="grid-column: span 2;">
-      <!-- Bandwidth Overview -->
+    <!-- Bandwidth -->
+    <div style="grid-column:span 2;">
       <div class="card" style="margin-bottom:20px;">
-        <div class="section-title">👥 Team Bandwidth (8 SP limit)</div>
+        <div class="section-title">👥 Team Bandwidth (8 SP limit{% if selected_sprint %} — {{ selected_sprint.name }}{% endif %})</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
           {% for bw in bandwidth %}
           <div style="background:var(--surface);border-radius:8px;padding:12px;border:1px solid {% if bw.over %}var(--red){% else %}var(--border){% endif %};">
@@ -37,7 +53,8 @@
       </div>
     </div>
 
-    <div style="grid-column: span 2;">
+    <!-- Stories -->
+    <div style="grid-column:span 2;">
       {% if stories %}
       {% for story in stories %}
       <div class="card" id="story-{{ story.id }}">
@@ -47,6 +64,7 @@
             <div>
               <div style="font-weight:600;font-size:0.95rem;">{{ story.title }}</div>
               {% if story.description %}<div class="text-sm text-muted mt-1">{{ story.description|truncatechars:100 }}</div>{% endif %}
+              {% if story.sprint %}<div class="text-sm mt-1"><span class="tag">📅 {{ story.sprint.name }}</span></div>{% endif %}
             </div>
           </div>
           <div class="flex items-center gap-2" style="flex-wrap:wrap;">
@@ -59,7 +77,7 @@
             </a>
             {% if is_sm %}
             <button class="btn btn-ghost btn-sm" onclick="openEditStory({{ story.id }})">✏️ Edit</button>
-            <button class="btn btn-ghost btn-sm" onclick="openAssignSP({{ story.id }})">🎯 Assign SP</button>
+            <button class="btn btn-ghost btn-sm" onclick="openAssignSP({{ story.id }})">🎯 SP</button>
             {% endif %}
           </div>
         </div>
@@ -81,13 +99,13 @@
           </div>
         </div>
         {% endif %}
-        {% if story.vote_average %}<div class="text-sm text-muted mt-2">Vote average: <strong style="color:var(--accent2);">{{ story.vote_average }}</strong></div>{% endif %}
+        {% if story.vote_average %}<div class="text-sm text-muted mt-2">Vote avg: <strong style="color:var(--accent2);">{{ story.vote_average }}</strong></div>{% endif %}
       </div>
       {% endfor %}
       {% else %}
       <div class="empty-state card">
         <div style="font-size:2.5rem;margin-bottom:12px;">📭</div>
-        <div>No user stories yet.{% if is_sm %} Add one using the button above.{% endif %}</div>
+        <div>No user stories{% if selected_sprint %} in {{ selected_sprint.name }}{% endif %}.{% if is_sm %} Add one using the button above.{% endif %}</div>
       </div>
       {% endif %}
     </div>
@@ -98,10 +116,17 @@
 <div class="modal-overlay" id="addStoryModal">
   <div class="modal">
     <h3>➕ Add User Story</h3>
+    <div class="form-group">
+      <label>Sprint</label>
+      <select id="newSprint">
+        <option value="">-- No sprint --</option>
+        {% for s in sprints %}<option value="{{ s.id }}" {% if selected_sprint.id == s.id %}selected{% endif %}>{{ s.name }}{% if s.is_active %} 🟢{% endif %}</option>{% endfor %}
+      </select>
+    </div>
     <div class="form-group"><label>Title *</label><input type="text" id="newTitle" placeholder="As a user..."></div>
     <div class="form-group"><label>Description</label><textarea id="newDesc" rows="3" placeholder="Optional details..."></textarea></div>
     <div class="form-group">
-      <label>Owner (team member)</label>
+      <label>Owner</label>
       <select id="newOwner">
         <option value="">-- No owner yet --</option>
         {% for m in all_members %}<option value="{{ m.id }}">{{ m.name }} ({{ m.stream }})</option>{% endfor %}
@@ -129,6 +154,13 @@
   <div class="modal">
     <h3>✏️ Edit User Story</h3>
     <input type="hidden" id="editStoryId">
+    <div class="form-group">
+      <label>Sprint</label>
+      <select id="editSprint">
+        <option value="">-- No sprint --</option>
+        {% for s in sprints %}<option value="{{ s.id }}">{{ s.name }}{% if s.is_active %} 🟢{% endif %}</option>{% endfor %}
+      </select>
+    </div>
     <div class="form-group"><label>Title *</label><input type="text" id="editTitle"></div>
     <div class="form-group"><label>Description</label><textarea id="editDesc" rows="3"></textarea></div>
     <div class="form-group">
@@ -174,7 +206,7 @@
     <button class="btn btn-ghost btn-sm mt-2" onclick="addStreamAssignRow()">+ Add Stream Assignment</button>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('assignSPModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitAssignSP()">Save Assignments</button>
+      <button class="btn btn-primary" onclick="submitAssignSP()">Save</button>
     </div>
   </div>
 </div>
@@ -198,8 +230,12 @@ async function submitAddStory() {
   const title = document.getElementById('newTitle').value.trim();
   if (!title) { toast('Title is required', 'error'); return; }
   const streams = [...document.querySelectorAll('.stream-check:checked')].map(c => c.value);
-  const owner_id = document.getElementById('newOwner').value || null;
-  const res = await api('/sm/stories/add/', 'POST', { title, description: document.getElementById('newDesc').value, owner_id, involved_streams: streams });
+  const res = await api('/sm/stories/add/', 'POST', {
+    title, description: document.getElementById('newDesc').value,
+    owner_id: document.getElementById('newOwner').value || null,
+    sprint_id: document.getElementById('newSprint').value || null,
+    involved_streams: streams
+  });
   if (res.ok) { toast('User story added!', 'success'); closeModal('addStoryModal'); location.reload(); }
   else toast(res.error, 'error');
 }
@@ -210,6 +246,7 @@ async function openEditStory(id) {
   document.getElementById('editTitle').value = res.title;
   document.getElementById('editDesc').value = res.description;
   document.getElementById('editOwner').value = res.owner_id || '';
+  document.getElementById('editSprint').value = res.sprint_id || '';
   document.querySelectorAll('.edit-stream-check').forEach(c => { c.checked = res.involved_streams.includes(c.value); });
   openModal('editStoryModal');
 }
@@ -221,6 +258,7 @@ async function submitEditStory() {
     title: document.getElementById('editTitle').value,
     description: document.getElementById('editDesc').value,
     owner_id: document.getElementById('editOwner').value || null,
+    sprint_id: document.getElementById('editSprint').value || null,
     involved_streams: streams
   });
   if (res.ok) { toast('Saved!', 'success'); closeModal('editStoryModal'); location.reload(); }
@@ -228,8 +266,8 @@ async function submitEditStory() {
 }
 
 async function deleteStory() {
-  const id = document.getElementById('editStoryId').value;
   if (!confirm('Delete this user story?')) return;
+  const id = document.getElementById('editStoryId').value;
   const res = await api(`/sm/stories/${id}/delete/`, 'POST');
   if (res.ok) { toast('Deleted', 'success'); closeModal('editStoryModal'); location.reload(); }
 }
@@ -243,9 +281,7 @@ async function openAssignSP(id) {
   const container = document.getElementById('streamAssignRows');
   container.innerHTML = '';
   streamRowCount = 0;
-  if (res.stream_assignments.length > 0) {
-    res.stream_assignments.forEach(sa => addStreamAssignRow(sa.stream, sa.member_id, sa.sp));
-  }
+  res.stream_assignments.forEach(sa => addStreamAssignRow(sa.stream, sa.member_id, sa.sp));
   openModal('assignSPModal');
 }
 
@@ -283,7 +319,6 @@ async function submitAssignSP() {
   else toast(res.error, 'error');
 }
 
-// close modal on overlay click
 document.querySelectorAll('.modal-overlay').forEach(o => {
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
 });

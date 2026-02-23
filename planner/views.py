@@ -4,8 +4,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.csrf import csrf_exempt
-from .models import SprintMember, UserStory, Vote, StreamAssignment, STREAM_CHOICES
+from .models import Sprint, SprintMember, UserStory, Vote, StreamAssignment, STREAM_CHOICES
 
 BANDWIDTH_LIMIT = 8
 
@@ -20,7 +19,6 @@ def sm_login(request):
         user = authenticate(request, username=request.POST['username'], password=request.POST['password'])
         if user and user.is_staff:
             login(request, user)
-            # Redirect to member pick so SM can also vote
             return redirect('sm_pick_member')
         error = 'Invalid credentials or not a Scrum Master.'
     return render(request, 'planner/login.html', {'error': error})
@@ -72,7 +70,7 @@ def board(request):
     is_sm = request.user.is_authenticated and request.user.is_staff
     if not member_id and not is_sm:
         return redirect('join')
-    
+
     member = None
     if member_id:
         try:
@@ -80,13 +78,31 @@ def board(request):
         except SprintMember.DoesNotExist:
             return redirect('join')
 
-    stories = UserStory.objects.prefetch_related('votes', 'stream_assignments', 'stream_assignments__member').select_related('owner').all()
+    # Sprint filter
+    sprints = Sprint.objects.all()
+    active_sprint = Sprint.objects.filter(is_active=True).first()
+    
+    sprint_id = request.GET.get('sprint')
+    selected_sprint = None
+    if sprint_id:
+        selected_sprint = get_object_or_404(Sprint, id=sprint_id)
+    elif active_sprint:
+        selected_sprint = active_sprint
+
+    stories_qs = UserStory.objects.prefetch_related(
+        'votes', 'stream_assignments', 'stream_assignments__member'
+    ).select_related('owner', 'sprint')
+
+    if selected_sprint:
+        stories = stories_qs.filter(sprint=selected_sprint)
+    else:
+        stories = stories_qs.all()
+
     all_members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
 
-    # bandwidth
     bandwidth = []
     for m in all_members:
-        total = m.total_sp()
+        total = m.total_sp(sprint=selected_sprint)
         bandwidth.append({'member': m, 'total': total, 'over': total > BANDWIDTH_LIMIT})
 
     return render(request, 'planner/board.html', {
@@ -96,6 +112,9 @@ def board(request):
         'bandwidth': bandwidth,
         'streams': [s[0] for s in STREAM_CHOICES],
         'all_members': all_members,
+        'sprints': sprints,
+        'selected_sprint': selected_sprint,
+        'active_sprint': active_sprint,
     })
 
 
@@ -131,6 +150,7 @@ def vote_room(request, us_id):
         'fibonacci': fibonacci,
         'my_vote': my_vote,
         'all_members': all_members,
+        'streams': [s[0] for s in STREAM_CHOICES],
     })
 
 
@@ -138,7 +158,7 @@ def vote_status(request, us_id):
     story = get_object_or_404(UserStory, id=us_id)
     all_members = SprintMember.objects.filter(is_active=True)
     votes = {v.member_id: v.points for v in story.votes.all()}
-    
+
     members_status = []
     for m in all_members:
         members_status.append({
@@ -149,6 +169,21 @@ def vote_status(request, us_id):
             'points': votes.get(m.id) if story.voting_status == 'closed' else None,
         })
 
+    # Per-stream averages (only streams that have at least one vote)
+    stream_averages = []
+    if story.voting_status == 'closed' and votes:
+        from collections import defaultdict
+        stream_votes = defaultdict(list)
+        for m in all_members:
+            if m.id in votes:
+                stream_votes[m.stream].append(votes[m.id])
+        for stream, points in sorted(stream_votes.items()):
+            stream_averages.append({
+                'stream': stream,
+                'average': round(sum(points) / len(points), 1),
+                'votes': len(points),
+            })
+
     return JsonResponse({
         'status': story.voting_status,
         'members': members_status,
@@ -156,6 +191,7 @@ def vote_status(request, us_id):
         'final_sp': story.final_sp,
         'total_members': all_members.count(),
         'voted_count': len(votes),
+        'stream_averages': stream_averages,
     })
 
 
@@ -185,11 +221,13 @@ def sm_panel(request):
     if not request.user.is_staff:
         return redirect('board')
     members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
-    stories = UserStory.objects.prefetch_related('stream_assignments__member').select_related('owner').all()
+    sprints = Sprint.objects.all()
+    active_sprint = Sprint.objects.filter(is_active=True).first()
+    stories = UserStory.objects.prefetch_related('stream_assignments__member').select_related('owner', 'sprint').all()
     all_members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
     bandwidth = []
     for m in all_members:
-        total = m.total_sp()
+        total = m.total_sp(sprint=active_sprint)
         bandwidth.append({'member': m, 'total': total, 'over': total > BANDWIDTH_LIMIT})
     return render(request, 'planner/sm_panel.html', {
         'members': members,
@@ -197,6 +235,8 @@ def sm_panel(request):
         'streams': [s[0] for s in STREAM_CHOICES],
         'all_members': all_members,
         'bandwidth': bandwidth,
+        'sprints': sprints,
+        'active_sprint': active_sprint,
     })
 
 
@@ -230,24 +270,80 @@ def remove_member(request, member_id):
 
 @login_required
 @require_POST
+def add_sprint(request):
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    data = json.loads(request.body)
+    name = data.get('name', '').strip()
+    if not name:
+        return JsonResponse({'error': 'Sprint name required'}, status=400)
+    sprint = Sprint.objects.create(
+        name=name,
+        goal=data.get('goal', ''),
+        start_date=data.get('start_date') or None,
+        end_date=data.get('end_date') or None,
+        is_active=data.get('is_active', False),
+    )
+    # if set as active, deactivate others
+    if sprint.is_active:
+        Sprint.objects.exclude(id=sprint.id).update(is_active=False)
+    return JsonResponse({'ok': True, 'id': sprint.id, 'name': sprint.name})
+
+
+@login_required
+@require_POST
+def edit_sprint(request, sprint_id):
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    sprint = get_object_or_404(Sprint, id=sprint_id)
+    data = json.loads(request.body)
+    if 'name' in data:
+        sprint.name = data['name']
+    if 'goal' in data:
+        sprint.goal = data['goal']
+    if 'start_date' in data:
+        sprint.start_date = data['start_date'] or None
+    if 'end_date' in data:
+        sprint.end_date = data['end_date'] or None
+    if 'is_active' in data:
+        sprint.is_active = data['is_active']
+        if sprint.is_active:
+            Sprint.objects.exclude(id=sprint.id).update(is_active=False)
+    sprint.save()
+    return JsonResponse({'ok': True})
+
+
+@login_required
+@require_POST
+def delete_sprint(request, sprint_id):
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    sprint = get_object_or_404(Sprint, id=sprint_id)
+    sprint.delete()
+    return JsonResponse({'ok': True})
+
+
+@login_required
+@require_POST
 def add_story(request):
     if not request.user.is_staff:
         return JsonResponse({'error': 'Forbidden'}, status=403)
     data = json.loads(request.body)
     title = data.get('title', '').strip()
-    description = data.get('description', '').strip()
-    owner_id = data.get('owner_id')
-    involved_streams = data.get('involved_streams', [])
     if not title:
         return JsonResponse({'error': 'Title required'}, status=400)
     owner = None
-    if owner_id:
-        owner = get_object_or_404(SprintMember, id=owner_id)
+    if data.get('owner_id'):
+        owner = get_object_or_404(SprintMember, id=data['owner_id'])
+    sprint = None
+    if data.get('sprint_id'):
+        sprint = get_object_or_404(Sprint, id=data['sprint_id'])
     story = UserStory.objects.create(
         title=title,
-        description=description,
+        description=data.get('description', ''),
         owner=owner,
-        involved_streams=involved_streams,
+        sprint=sprint,
+        involved_streams=data.get('involved_streams', []),
         order=UserStory.objects.count()
     )
     return JsonResponse({'ok': True, 'id': story.id})
@@ -265,14 +361,13 @@ def edit_story(request, us_id):
     if 'description' in data:
         story.description = data['description']
     if 'owner_id' in data:
-        if data['owner_id']:
-            story.owner = get_object_or_404(SprintMember, id=data['owner_id'])
-        else:
-            story.owner = None
+        story.owner = get_object_or_404(SprintMember, id=data['owner_id']) if data['owner_id'] else None
     if 'involved_streams' in data:
         story.involved_streams = data['involved_streams']
     if 'final_sp' in data:
         story.final_sp = data['final_sp']
+    if 'sprint_id' in data:
+        story.sprint = get_object_or_404(Sprint, id=data['sprint_id']) if data['sprint_id'] else None
     story.save()
     return JsonResponse({'ok': True})
 
@@ -319,32 +414,22 @@ def assign_sp(request, us_id):
         return JsonResponse({'error': 'Forbidden'}, status=403)
     story = get_object_or_404(UserStory, id=us_id)
     data = json.loads(request.body)
-    
-    # assign final SP to story (goes to owner)
     if 'final_sp' in data:
         story.final_sp = data['final_sp']
         story.save()
-
-    # assign stream SPs: [{stream, member_id, sp}, ...]
     if 'stream_assignments' in data:
-        # clear existing for this story
         story.stream_assignments.all().delete()
         for sa in data['stream_assignments']:
             member = get_object_or_404(SprintMember, id=sa['member_id'])
             StreamAssignment.objects.create(
-                user_story=story,
-                stream=sa['stream'],
-                member=member,
-                sp=sa['sp']
+                user_story=story, stream=sa['stream'], member=member, sp=sa['sp']
             )
-
     return JsonResponse({'ok': True})
 
 
 @login_required
 @require_POST
 def edit_stream_assignment(request, us_id):
-    """Edit a single stream assignment SP"""
     if not request.user.is_staff:
         return JsonResponse({'error': 'Forbidden'}, status=403)
     data = json.loads(request.body)
@@ -359,21 +444,13 @@ def get_story_detail(request, us_id):
     assignments = []
     for sa in story.stream_assignments.select_related('member').all():
         assignments.append({
-            'id': sa.id,
-            'stream': sa.stream,
-            'member_id': sa.member_id,
-            'member_name': sa.member.name,
-            'sp': sa.sp,
+            'id': sa.id, 'stream': sa.stream,
+            'member_id': sa.member_id, 'member_name': sa.member.name, 'sp': sa.sp,
         })
     return JsonResponse({
-        'id': story.id,
-        'title': story.title,
-        'description': story.description,
-        'owner_id': story.owner_id,
-        'owner_name': story.owner.name if story.owner else None,
-        'involved_streams': story.involved_streams,
-        'final_sp': story.final_sp,
-        'voting_status': story.voting_status,
-        'vote_average': story.vote_average,
-        'stream_assignments': assignments,
+        'id': story.id, 'title': story.title, 'description': story.description,
+        'owner_id': story.owner_id, 'owner_name': story.owner.name if story.owner else None,
+        'involved_streams': story.involved_streams, 'final_sp': story.final_sp,
+        'voting_status': story.voting_status, 'vote_average': story.vote_average,
+        'sprint_id': story.sprint_id, 'stream_assignments': assignments,
     })
