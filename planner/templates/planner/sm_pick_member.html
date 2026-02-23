@@ -1,0 +1,54 @@
+{% extends 'planner/base.html' %}
+{% block title %}SM — Pick Your Member Identity{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 60px);">
+  <div style="width:100%;max-width:480px;padding:24px;">
+    <div class="card">
+      <h2 style="margin-bottom:6px;text-align:center;">👑 Welcome, Scrum Master</h2>
+      <p class="text-muted text-sm" style="text-align:center;margin-bottom:24px;">
+        Select your team member identity so you can participate in voting
+      </p>
+      {% if error %}<div style="color:var(--red);margin-bottom:16px;font-size:0.875rem;text-align:center;">{{ error }}</div>{% endif %}
+      {% if members %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+          <label>You are...</label>
+          <select name="member_id" required>
+            <option value="">-- Select your name --</option>
+            {% regroup members by stream as stream_groups %}
+            {% for group in stream_groups %}
+            <optgroup label="{{ group.grouper }}">
+              {% for m in group.list %}
+              <option value="{{ m.id }}">{{ m.name }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;">
+          Continue to SM Panel →
+        </button>
+      </form>
+      <div class="mt-3 text-center">
+        <form method="post">
+          {% csrf_token %}
+          <button type="submit" name="member_id" value="skip"
+            class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;">
+            Skip — I'll just manage, not vote
+          </button>
+        </form>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div style="font-size:2rem;margin-bottom:8px;">⚠️</div>
+        No team members added yet. You need to add members before you can pick your identity.
+      </div>
+      <div class="mt-3 text-center">
+        <a href="{% url 'sm_panel' %}" class="btn btn-primary" style="justify-content:center;">Go to SM Panel →</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

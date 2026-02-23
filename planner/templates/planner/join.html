@@ -1,0 +1,40 @@
+{% extends 'planner/base.html' %}
+{% block title %}Join Sprint{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 60px);">
+  <div style="width:100%;max-width:480px;padding:24px;">
+    <div class="card">
+      <h2 style="margin-bottom:8px;text-align:center;">👋 Join Sprint Planning</h2>
+      <p class="text-muted text-sm" style="text-align:center;margin-bottom:24px;">Select your name to join the session</p>
+      {% if members %}
+      <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+          <label>Who are you?</label>
+          <select name="member_id" required>
+            <option value="">-- Select your name --</option>
+            {% regroup members by stream as stream_groups %}
+            {% for group in stream_groups %}
+            <optgroup label="{{ group.grouper }}">
+              {% for m in group.list %}
+              <option value="{{ m.id }}">{{ m.name }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:10px;">Join Session →</button>
+      </form>
+      {% else %}
+      <div class="empty-state">
+        <div style="font-size:2rem;margin-bottom:8px;">🕐</div>
+        No team members added yet. Ask your Scrum Master to set up the team first.
+      </div>
+      {% endif %}
+      <div class="mt-3 text-center text-sm text-muted">
+        Scrum Master? <a href="{% url 'sm_login' %}">Login here →</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

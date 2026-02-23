@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: sprint-planner
+    env: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn core.wsgi --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sprint-planner-db
+          property: connectionString
+
+databases:
+  - name: sprint-planner-db
+    databaseName: sprint_planner
+    user: sprint_user

@@ -1,0 +1,160 @@
+{% extends 'planner/base.html' %}
+{% block title %}SM Panel{% endblock %}
+{% block content %}
+<div class="container">
+  <h1 style="font-size:1.4rem;font-weight:700;margin:16px 0 4px;">👑 Scrum Master Panel</h1>
+  <p class="text-muted text-sm mb-4">Manage team members and sprint stories</p>
+
+  <div class="grid-2">
+    <!-- Team Members -->
+    <div>
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <div class="section-title" style="margin:0;">👥 Sprint Team Members ({{ members.count }})</div>
+          <button class="btn btn-primary btn-sm" onclick="openModal('addMemberModal')">+ Add Member</button>
+        </div>
+        {% regroup members by stream as stream_groups %}
+        {% for group in stream_groups %}
+        <div class="mb-3">
+          <div class="text-sm text-muted mb-1" style="font-weight:600;">{{ group.grouper }}</div>
+          {% for m in group.list %}
+          <div class="flex items-center justify-between" style="background:var(--surface);border-radius:6px;padding:8px 12px;margin-bottom:4px;">
+            <span style="font-size:0.875rem;">{{ m.name }}</span>
+            <button class="btn btn-danger btn-sm" onclick="removeMember({{ m.id }}, '{{ m.name }}')">Remove</button>
+          </div>
+          {% endfor %}
+        </div>
+        {% empty %}
+        <div class="text-muted text-sm">No members yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Bandwidth -->
+    <div>
+      <div class="card">
+        <div class="section-title">📊 Bandwidth Summary</div>
+        {% for bw in bandwidth %}
+        <div style="margin-bottom:12px;">
+          <div class="flex items-center justify-between mb-1">
+            <span style="font-size:0.85rem;">{{ bw.member.name }} <span class="badge badge-stream">{{ bw.member.stream }}</span></span>
+            <span style="font-size:0.85rem;font-weight:700;color:{% if bw.over %}var(--red){% else %}var(--text){% endif %};">{{ bw.total }}/8 SP</span>
+          </div>
+          <div class="bandwidth-bar">
+            <div class="bandwidth-fill" style="width:{% widthratio bw.total 8 100 %}%;background:{% if bw.over %}var(--red){% elif bw.total >= 6 %}var(--yellow){% else %}var(--green){% endif %};"></div>
+          </div>
+        </div>
+        {% empty %}
+        <div class="text-muted text-sm">No members yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Stories Management -->
+    <div style="grid-column:span 2;">
+      <div class="card">
+        <div class="flex items-center justify-between mb-4">
+          <div class="section-title" style="margin:0;">📋 User Stories ({{ stories.count }})</div>
+          <div class="flex gap-2">
+            <a href="{% url 'board' %}" class="btn btn-ghost btn-sm">View Board</a>
+          </div>
+        </div>
+        {% for story in stories %}
+        <div style="background:var(--surface);border-radius:8px;padding:14px;margin-bottom:10px;border:1px solid var(--border);">
+          <div class="flex items-center justify-between" style="flex-wrap:wrap;gap:8px;">
+            <div class="flex items-center gap-3">
+              <div class="sp-chip {% if not story.final_sp %}none{% endif %}">{{ story.final_sp|default:"?" }}</div>
+              <div>
+                <div style="font-weight:600;">{{ story.title }}</div>
+                <div class="text-sm text-muted">
+                  {% if story.owner %}Owner: {{ story.owner.name }}{% else %}No owner{% endif %}
+                  {% if story.vote_average %} · Avg: {{ story.vote_average }}{% endif %}
+                </div>
+              </div>
+            </div>
+            <div class="flex gap-2 flex-wrap">
+              <span class="badge badge-{{ story.voting_status }}">{{ story.get_voting_status_display }}</span>
+              <a href="{% url 'vote_room' story.id %}" class="btn btn-ghost btn-sm">🗳️ Voting Room</a>
+              {% if story.voting_status == 'pending' %}
+              <button class="btn btn-success btn-sm" onclick="triggerVoting({{ story.id }})">▶ Start Vote</button>
+              {% elif story.voting_status == 'voting' %}
+              <button class="btn btn-warning btn-sm" onclick="closeVoting({{ story.id }})">🔒 Close Vote</button>
+              {% endif %}
+            </div>
+          </div>
+          {% if story.stream_assignments.all %}
+          <div class="mt-2" style="display:flex;flex-wrap:wrap;gap:6px;">
+            {% for sa in story.stream_assignments.all %}
+            <span style="font-size:0.75rem;background:var(--card);border:1px solid var(--border);border-radius:4px;padding:2px 8px;">
+              {{ sa.stream }}: {{ sa.member.name }} <strong>{{ sa.sp }}SP</strong>
+            </span>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% empty %}
+        <div class="text-muted text-sm">No stories. Add them from the Board.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Member Modal -->
+<div class="modal-overlay" id="addMemberModal">
+  <div class="modal">
+    <h3>➕ Add Team Member</h3>
+    <div class="form-group"><label>Full Name *</label><input type="text" id="memberName" placeholder="e.g. Ahmed Al-Rashid"></div>
+    <div class="form-group">
+      <label>Stream *</label>
+      <select id="memberStream">
+        <option value="">-- Select Stream --</option>
+        {% for s in streams %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addMemberModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddMember()">Add Member</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+async function submitAddMember() {
+  const name = document.getElementById('memberName').value.trim();
+  const stream = document.getElementById('memberStream').value;
+  if (!name || !stream) { toast('Name and stream required', 'error'); return; }
+  const formData = new FormData();
+  formData.append('name', name);
+  formData.append('stream', stream);
+  formData.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+  const res = await fetch('/sm/members/add/', { method: 'POST', body: formData });
+  const data = await res.json();
+  if (data.ok) { toast(`${name} added!`, 'success'); closeModal('addMemberModal'); location.reload(); }
+  else toast(data.error, 'error');
+}
+
+async function removeMember(id, name) {
+  if (!confirm(`Remove ${name} from sprint team?`)) return;
+  const res = await api(`/sm/members/${id}/remove/`, 'POST');
+  if (res.ok) { toast(`${name} removed`, 'success'); location.reload(); }
+}
+
+async function triggerVoting(id) {
+  if (!confirm('Start voting for this story?')) return;
+  const res = await api(`/sm/stories/${id}/trigger-voting/`, 'POST');
+  if (res.ok) { toast('Voting started!', 'success'); location.reload(); }
+}
+
+async function closeVoting(id) {
+  const res = await api(`/sm/stories/${id}/close-voting/`, 'POST');
+  if (res.ok) { toast('Voting closed. Avg: ' + res.average, 'success'); location.reload(); }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,169 @@
+{% extends 'planner/base.html' %}
+{% block title %}Vote - {{ story.title }}{% endblock %}
+{% block content %}
+<div class="container" style="max-width:800px;">
+  <div class="mt-2 mb-4">
+    <a href="{% url 'board' %}" class="text-sm text-muted">← Back to Board</a>
+  </div>
+
+  <div class="card">
+    <div class="flex items-center justify-between" style="flex-wrap:wrap;gap:12px;">
+      <div>
+        <h2 style="font-size:1.2rem;font-weight:700;">{{ story.title }}</h2>
+        {% if story.description %}<p class="text-muted text-sm mt-1">{{ story.description }}</p>{% endif %}
+      </div>
+      <div class="flex gap-2 items-center flex-wrap">
+        <span class="badge badge-{{ story.voting_status }}" id="statusBadge">
+          {% if story.voting_status == 'voting' %}🗳️ Voting Open{% elif story.voting_status == 'closed' %}✅ Closed{% else %}⏳ Pending{% endif %}
+        </span>
+        {% if story.owner %}<span class="badge" style="background:#1e3a5f;color:var(--blue);">👤 {{ story.owner.name }}</span>{% endif %}
+        {% if story.involved_streams %}
+          {% for s in story.involved_streams %}<span class="tag">{{ s }}</span>{% endfor %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if is_sm %}
+  <div class="card" style="background:linear-gradient(135deg,#1a1d27,#22263a);">
+    <div class="section-title">👑 Scrum Master Controls</div>
+    <div class="flex gap-3 flex-wrap">
+      {% if story.voting_status != 'voting' %}
+      <button class="btn btn-success" onclick="triggerVoting()">🗳️ Start Voting</button>
+      {% endif %}
+      {% if story.voting_status == 'voting' %}
+      <button class="btn btn-warning" onclick="closeVoting()">🔒 Close Voting</button>
+      {% endif %}
+      <a href="{% url 'board' %}" class="btn btn-ghost">🎯 Go to Board (Assign SP)</a>
+    </div>
+    <div id="avgResult" class="mt-3 text-sm" style="display:none;background:var(--surface);border-radius:8px;padding:12px;">
+      Vote Average: <strong id="avgValue" style="font-size:1.2rem;color:var(--accent2);"></strong>
+      <span class="text-muted"> — Go to board to assign final SP</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- My Vote -->
+  {% if member %}
+  <div class="card" id="myVoteCard">
+    <div class="section-title">🗳️ Your Vote</div>
+    {% if story.voting_status == 'voting' %}
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      {% for f in fibonacci %}
+      <button class="btn {% if my_vote and my_vote.points == f %}btn-primary{% else %}btn-ghost{% endif %} fib-btn"
+              data-points="{{ f }}" onclick="submitVote({{ f }}, this)">
+        {{ f }}
+      </button>
+      {% endfor %}
+    </div>
+    <div id="myVoteStatus" class="mt-2 text-sm text-muted">
+      {% if my_vote %}✅ You voted: <strong>{{ my_vote.points }}</strong>{% else %}Choose your estimate above{% endif %}
+    </div>
+    {% elif story.voting_status == 'closed' %}
+    <div>
+      {% if my_vote %}Your vote: <strong style="color:var(--accent2);font-size:1.1rem;">{{ my_vote.points }}</strong>{% else %}<span class="text-muted">You didn't vote</span>{% endif %}
+    </div>
+    {% else %}
+    <div class="text-muted text-sm">Voting hasn't started yet. Wait for the Scrum Master to open voting.</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Team Votes Status -->
+  <div class="card">
+    <div class="flex items-center justify-between mb-3">
+      <div class="section-title" style="margin:0;">👥 Team Votes</div>
+      <div class="text-sm text-muted"><span id="votedCount">0</span> / <span id="totalCount">0</span> voted</div>
+    </div>
+    <div id="votesList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;"></div>
+  </div>
+
+  <!-- Results (shown when closed) -->
+  <div id="resultsCard" class="card" style="display:none;">
+    <div class="section-title">📊 Results</div>
+    <div style="text-align:center;padding:16px;">
+      <div class="text-muted text-sm">Vote Average</div>
+      <div style="font-size:3rem;font-weight:800;color:var(--accent2);margin:8px 0;" id="bigAvg">—</div>
+    </div>
+    <div id="voteBreakdown"></div>
+  </div>
+</div>
+
+<script>
+let pollInterval;
+const storyId = {{ story.id }};
+const isSM = {{ is_sm|yesno:'true,false' }};
+const currentStatus = '{{ story.voting_status }}';
+
+function getFibColor(p) {
+  const colors = {1:'#22c55e',2:'#84cc16',3:'#eab308',5:'#f97316',8:'#ef4444',13:'#a855f7'};
+  return colors[p] || '#6366f1';
+}
+
+async function pollVotes() {
+  const data = await api(`/vote/${storyId}/status/`);
+  document.getElementById('votedCount').textContent = data.voted_count;
+  document.getElementById('totalCount').textContent = data.total_members;
+
+  const list = document.getElementById('votesList');
+  list.innerHTML = data.members.map(m => `
+    <div style="background:var(--surface);border-radius:8px;padding:10px;border:1px solid ${m.voted ? 'var(--green)' : 'var(--border)'};">
+      <div class="flex items-center justify-between">
+        <span style="font-size:0.85rem;font-weight:600;">${m.name}</span>
+        ${m.voted
+          ? (data.status === 'closed' && m.points != null
+              ? `<span style="background:${getFibColor(m.points)};color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;">${m.points}</span>`
+              : '<span style="color:var(--green);font-size:0.8rem;">✅ Voted</span>')
+          : '<span style="color:var(--muted);font-size:0.8rem;">⏳ Waiting</span>'}
+      </div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:2px;">${m.stream}</div>
+    </div>`).join('');
+
+  if (data.status === 'closed') {
+    document.getElementById('resultsCard').style.display = 'block';
+    document.getElementById('bigAvg').textContent = data.average || '—';
+    if (isSM && data.average) {
+      document.getElementById('avgResult').style.display = 'block';
+      document.getElementById('avgValue').textContent = data.average;
+    }
+    clearInterval(pollInterval);
+  }
+}
+
+async function submitVote(points, btn) {
+  const res = await api(`/vote/${storyId}/submit/`, 'POST', { points });
+  if (res.ok) {
+    document.querySelectorAll('.fib-btn').forEach(b => b.classList.remove('btn-primary'));
+    document.querySelectorAll('.fib-btn').forEach(b => b.classList.add('btn-ghost'));
+    btn.classList.remove('btn-ghost');
+    btn.classList.add('btn-primary');
+    document.getElementById('myVoteStatus').innerHTML = `✅ You voted: <strong>${points}</strong>`;
+    toast('Vote submitted!', 'success');
+    pollVotes();
+  } else toast(res.error || 'Error', 'error');
+}
+
+async function triggerVoting() {
+  if (!confirm('Start voting for this story? Previous votes will be cleared.')) return;
+  const res = await api(`/sm/stories/${storyId}/trigger-voting/`, 'POST');
+  if (res.ok) { toast('Voting started!', 'success'); location.reload(); }
+}
+
+async function closeVoting() {
+  const res = await api(`/sm/stories/${storyId}/close-voting/`, 'POST');
+  if (res.ok) {
+    toast('Voting closed. Average: ' + res.average, 'success');
+    pollVotes();
+    document.getElementById('avgResult').style.display = 'block';
+    document.getElementById('avgValue').textContent = res.average;
+    setTimeout(() => location.reload(), 1500);
+  }
+}
+
+// Start polling
+pollVotes();
+if ('{{ story.voting_status }}' === 'voting') {
+  pollInterval = setInterval(pollVotes, 3000);
+}
+</script>
+{% endblock %}

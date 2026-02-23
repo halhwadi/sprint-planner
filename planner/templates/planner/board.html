@@ -1,0 +1,291 @@
+{% extends 'planner/base.html' %}
+{% block title %}Sprint Board{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="flex items-center justify-between mt-2 mb-4" style="flex-wrap:wrap;gap:12px;">
+    <div>
+      <h1 style="font-size:1.4rem;font-weight:700;">📋 Sprint Planning Board</h1>
+      <p class="text-muted text-sm mt-1">{{ stories.count }} user stories</p>
+    </div>
+    {% if is_sm %}
+    <button class="btn btn-primary" onclick="openAddStory()">+ Add User Story</button>
+    {% endif %}
+  </div>
+
+  <div class="grid-2">
+    <!-- LEFT: User Stories -->
+    <div style="grid-column: span 2;">
+      <!-- Bandwidth Overview -->
+      <div class="card" style="margin-bottom:20px;">
+        <div class="section-title">👥 Team Bandwidth (8 SP limit)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
+          {% for bw in bandwidth %}
+          <div style="background:var(--surface);border-radius:8px;padding:12px;border:1px solid {% if bw.over %}var(--red){% else %}var(--border){% endif %};">
+            <div class="flex items-center justify-between mb-2">
+              <span style="font-size:0.85rem;font-weight:600;">{{ bw.member.name }}</span>
+              <span class="badge badge-stream">{{ bw.member.stream }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="bandwidth-bar" style="flex:1;">
+                <div class="bandwidth-fill" style="width:{% widthratio bw.total 8 100 %}%;background:{% if bw.over %}var(--red){% elif bw.total >= 6 %}var(--yellow){% else %}var(--green){% endif %};"></div>
+              </div>
+              <span style="font-size:0.8rem;font-weight:700;color:{% if bw.over %}var(--red){% else %}var(--text){% endif %};">{{ bw.total }}/8</span>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div style="grid-column: span 2;">
+      {% if stories %}
+      {% for story in stories %}
+      <div class="card" id="story-{{ story.id }}">
+        <div class="flex items-center justify-between" style="flex-wrap:wrap;gap:8px;">
+          <div class="flex items-center gap-3" style="flex:1;">
+            <div class="sp-chip {% if not story.final_sp %}none{% endif %}">{{ story.final_sp|default:"?" }}</div>
+            <div>
+              <div style="font-weight:600;font-size:0.95rem;">{{ story.title }}</div>
+              {% if story.description %}<div class="text-sm text-muted mt-1">{{ story.description|truncatechars:100 }}</div>{% endif %}
+            </div>
+          </div>
+          <div class="flex items-center gap-2" style="flex-wrap:wrap;">
+            <span class="badge badge-{{ story.voting_status }}">
+              {% if story.voting_status == 'pending' %}⏳ Pending{% elif story.voting_status == 'voting' %}🗳️ Voting{% else %}✅ Closed{% endif %}
+            </span>
+            {% if story.owner %}<span class="badge" style="background:#1e3a5f;color:var(--blue);">👤 {{ story.owner.name }}</span>{% endif %}
+            <a href="{% url 'vote_room' story.id %}" class="btn btn-ghost btn-sm">
+              {% if story.voting_status == 'voting' %}🗳️ Vote{% else %}👁️ View{% endif %}
+            </a>
+            {% if is_sm %}
+            <button class="btn btn-ghost btn-sm" onclick="openEditStory({{ story.id }})">✏️ Edit</button>
+            <button class="btn btn-ghost btn-sm" onclick="openAssignSP({{ story.id }})">🎯 Assign SP</button>
+            {% endif %}
+          </div>
+        </div>
+        {% if story.involved_streams %}
+        <div class="mt-2">
+          <span class="text-sm text-muted">Streams: </span>
+          {% for s in story.involved_streams %}<span class="tag">{{ s }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% if story.stream_assignments.all %}
+        <div class="mt-2" style="background:var(--surface);border-radius:8px;padding:10px;">
+          <div class="text-sm text-muted mb-2">Stream Assignments:</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            {% for sa in story.stream_assignments.all %}
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:0.8rem;">
+              <span class="tag">{{ sa.stream }}</span> {{ sa.member.name }} — <strong>{{ sa.sp }} SP</strong>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {% if story.vote_average %}<div class="text-sm text-muted mt-2">Vote average: <strong style="color:var(--accent2);">{{ story.vote_average }}</strong></div>{% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="empty-state card">
+        <div style="font-size:2.5rem;margin-bottom:12px;">📭</div>
+        <div>No user stories yet.{% if is_sm %} Add one using the button above.{% endif %}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Add Story Modal -->
+<div class="modal-overlay" id="addStoryModal">
+  <div class="modal">
+    <h3>➕ Add User Story</h3>
+    <div class="form-group"><label>Title *</label><input type="text" id="newTitle" placeholder="As a user..."></div>
+    <div class="form-group"><label>Description</label><textarea id="newDesc" rows="3" placeholder="Optional details..."></textarea></div>
+    <div class="form-group">
+      <label>Owner (team member)</label>
+      <select id="newOwner">
+        <option value="">-- No owner yet --</option>
+        {% for m in all_members %}<option value="{{ m.id }}">{{ m.name }} ({{ m.stream }})</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Involved Streams</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+        {% for s in streams %}
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--text);">
+          <input type="checkbox" class="stream-check" value="{{ s }}" style="width:auto;"> {{ s }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('addStoryModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddStory()">Add Story</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Story Modal -->
+<div class="modal-overlay" id="editStoryModal">
+  <div class="modal">
+    <h3>✏️ Edit User Story</h3>
+    <input type="hidden" id="editStoryId">
+    <div class="form-group"><label>Title *</label><input type="text" id="editTitle"></div>
+    <div class="form-group"><label>Description</label><textarea id="editDesc" rows="3"></textarea></div>
+    <div class="form-group">
+      <label>Owner</label>
+      <select id="editOwner">
+        <option value="">-- No owner --</option>
+        {% for m in all_members %}<option value="{{ m.id }}">{{ m.name }} ({{ m.stream }})</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Involved Streams</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+        {% for s in streams %}
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;color:var(--text);">
+          <input type="checkbox" class="edit-stream-check" value="{{ s }}" style="width:auto;"> {{ s }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="deleteStory()">🗑️ Delete</button>
+      <button class="btn btn-ghost" onclick="closeModal('editStoryModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditStory()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Assign SP Modal -->
+<div class="modal-overlay" id="assignSPModal">
+  <div class="modal">
+    <h3>🎯 Assign Story Points</h3>
+    <input type="hidden" id="assignStoryId">
+    <div style="background:var(--surface);border-radius:8px;padding:12px;margin-bottom:16px;">
+      <div class="text-sm text-muted">Vote Average: <strong id="voteAvgDisplay" style="color:var(--accent2);">—</strong></div>
+    </div>
+    <div class="form-group">
+      <label>Final SP for User Story (assigned to owner)</label>
+      <input type="number" id="finalSP" min="0" step="0.5" placeholder="e.g. 5">
+    </div>
+    <hr class="divider">
+    <div class="section-title">Stream SP Assignments</div>
+    <div id="streamAssignRows"></div>
+    <button class="btn btn-ghost btn-sm mt-2" onclick="addStreamAssignRow()">+ Add Stream Assignment</button>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('assignSPModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAssignSP()">Save Assignments</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ALL_MEMBERS = [{% for m in all_members %}{"id":{{m.id}},"name":"{{m.name}}","stream":"{{m.stream}}"},{% endfor %}];
+const ALL_STREAMS = [{% for s in streams %}"{{s}}",{% endfor %}];
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function openAddStory() {
+  document.getElementById('newTitle').value = '';
+  document.getElementById('newDesc').value = '';
+  document.getElementById('newOwner').value = '';
+  document.querySelectorAll('.stream-check').forEach(c => c.checked = false);
+  openModal('addStoryModal');
+}
+
+async function submitAddStory() {
+  const title = document.getElementById('newTitle').value.trim();
+  if (!title) { toast('Title is required', 'error'); return; }
+  const streams = [...document.querySelectorAll('.stream-check:checked')].map(c => c.value);
+  const owner_id = document.getElementById('newOwner').value || null;
+  const res = await api('/sm/stories/add/', 'POST', { title, description: document.getElementById('newDesc').value, owner_id, involved_streams: streams });
+  if (res.ok) { toast('User story added!', 'success'); closeModal('addStoryModal'); location.reload(); }
+  else toast(res.error, 'error');
+}
+
+async function openEditStory(id) {
+  const res = await api(`/api/stories/${id}/`);
+  document.getElementById('editStoryId').value = id;
+  document.getElementById('editTitle').value = res.title;
+  document.getElementById('editDesc').value = res.description;
+  document.getElementById('editOwner').value = res.owner_id || '';
+  document.querySelectorAll('.edit-stream-check').forEach(c => { c.checked = res.involved_streams.includes(c.value); });
+  openModal('editStoryModal');
+}
+
+async function submitEditStory() {
+  const id = document.getElementById('editStoryId').value;
+  const streams = [...document.querySelectorAll('.edit-stream-check:checked')].map(c => c.value);
+  const res = await api(`/sm/stories/${id}/edit/`, 'POST', {
+    title: document.getElementById('editTitle').value,
+    description: document.getElementById('editDesc').value,
+    owner_id: document.getElementById('editOwner').value || null,
+    involved_streams: streams
+  });
+  if (res.ok) { toast('Saved!', 'success'); closeModal('editStoryModal'); location.reload(); }
+  else toast(res.error, 'error');
+}
+
+async function deleteStory() {
+  const id = document.getElementById('editStoryId').value;
+  if (!confirm('Delete this user story?')) return;
+  const res = await api(`/sm/stories/${id}/delete/`, 'POST');
+  if (res.ok) { toast('Deleted', 'success'); closeModal('editStoryModal'); location.reload(); }
+}
+
+let streamRowCount = 0;
+async function openAssignSP(id) {
+  document.getElementById('assignStoryId').value = id;
+  const res = await api(`/api/stories/${id}/`);
+  document.getElementById('finalSP').value = res.final_sp || '';
+  document.getElementById('voteAvgDisplay').textContent = res.vote_average || '—';
+  const container = document.getElementById('streamAssignRows');
+  container.innerHTML = '';
+  streamRowCount = 0;
+  if (res.stream_assignments.length > 0) {
+    res.stream_assignments.forEach(sa => addStreamAssignRow(sa.stream, sa.member_id, sa.sp));
+  }
+  openModal('assignSPModal');
+}
+
+function addStreamAssignRow(stream='', memberId='', sp='') {
+  const id = streamRowCount++;
+  const memberOptions = ALL_MEMBERS.map(m => `<option value="${m.id}" ${m.id==memberId?'selected':''}>${m.name} (${m.stream})</option>`).join('');
+  const streamOptions = ALL_STREAMS.map(s => `<option value="${s}" ${s==stream?'selected':''}>${s}</option>`).join('');
+  const row = document.createElement('div');
+  row.className = 'flex gap-2 mt-2 items-center';
+  row.id = `srow-${id}`;
+  row.innerHTML = `
+    <select class="sa-stream" style="flex:1;">${streamOptions}</select>
+    <select class="sa-member" style="flex:2;"><option value="">--Member--</option>${memberOptions}</select>
+    <input type="number" class="sa-sp" value="${sp}" min="0" step="0.5" placeholder="SP" style="width:70px;">
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('srow-${id}').remove()">✕</button>`;
+  document.getElementById('streamAssignRows').appendChild(row);
+}
+
+async function submitAssignSP() {
+  const id = document.getElementById('assignStoryId').value;
+  const finalSP = document.getElementById('finalSP').value;
+  const rows = document.querySelectorAll('#streamAssignRows > div');
+  const stream_assignments = [];
+  for (const row of rows) {
+    const stream = row.querySelector('.sa-stream').value;
+    const member_id = row.querySelector('.sa-member').value;
+    const sp = row.querySelector('.sa-sp').value;
+    if (stream && member_id && sp) stream_assignments.push({ stream, member_id: parseInt(member_id), sp: parseFloat(sp) });
+  }
+  const res = await api(`/sm/stories/${id}/assign-sp/`, 'POST', {
+    final_sp: finalSP ? parseFloat(finalSP) : null,
+    stream_assignments
+  });
+  if (res.ok) { toast('SP assigned!', 'success'); closeModal('assignSPModal'); location.reload(); }
+  else toast(res.error, 'error');
+}
+
+// close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+</script>
+{% endblock %}
