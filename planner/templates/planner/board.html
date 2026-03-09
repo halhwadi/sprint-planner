@@ -23,7 +23,10 @@
         {% if selected_sprint.start_date %} · {{ selected_sprint.start_date }} → {{ selected_sprint.end_date }}{% endif %}
       </span>
       {% endif %}
-      {% if is_sm %}
+     {% if is_sm %}
+      {% if selected_sprint %}
+      <a href="{% url 'export_sprint' selected_sprint.id %}" class="btn btn-ghost btn-sm">⬇️ Export Excel</a>
+      {% endif %}
       <button class="btn btn-primary btn-sm" onclick="openAddStory()">+ Add Story</button>
       {% endif %}
     </div>
