@@ -636,3 +636,121 @@ def export_sprint(request, sprint_id):
     response['Content-Disposition'] = f'attachment; filename="{sprint.name.replace(" ", "_")}_export.xlsx"'
     wb.save(response)
     return response
+
+
+@login_required
+def import_stories(request, sprint_id):
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    sprint = get_object_or_404(Sprint, id=sprint_id)
+
+    if request.method == 'GET':
+        members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
+        return render(request, 'planner/import_stories.html', {
+            'sprint': sprint,
+            'members': members,
+            'streams': [s[0] for s in STREAM_CHOICES],
+        })
+
+    # POST — process uploaded file
+    import openpyxl
+    from io import BytesIO
+
+    excel_file = request.FILES.get('excel_file')
+    if not excel_file:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+
+    try:
+        wb = openpyxl.load_workbook(BytesIO(excel_file.read()), data_only=True)
+        ws = wb.active
+
+        # Read headers from row 1 — normalize to lowercase stripped
+        headers = []
+        for cell in ws[1]:
+            val = str(cell.value).strip().lower() if cell.value else ''
+            headers.append(val)
+
+        # Map known column names to indices
+        def find_col(candidates):
+            for c in candidates:
+                for i, h in enumerate(headers):
+                    if c in h:
+                        return i
+            return None
+
+        col_title       = find_col(['title', 'user story', 'story', 'name'])
+        col_description = find_col(['description', 'desc', 'detail'])
+        col_owner       = find_col(['owner', 'assigned to', 'assignee'])
+        col_streams     = find_col(['stream', 'streams', 'involved'])
+        col_sp          = find_col(['sp', 'story point', 'points', 'estimate'])
+
+        if col_title is None:
+            return JsonResponse({
+                'error': 'Could not find a title column. Make sure row 1 has a header like "Title" or "User Story".'
+            }, status=400)
+
+        created = 0
+        skipped = 0
+        errors = []
+
+        for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+            title = row[col_title] if col_title < len(row) else None
+            if not title or str(title).strip() == '':
+                skipped += 1
+                continue
+
+            title = str(title).strip()
+            description = ''
+            owner = None
+            involved_streams = []
+            final_sp = None
+
+            if col_description is not None and col_description < len(row):
+                val = row[col_description]
+                description = str(val).strip() if val else ''
+
+            if col_owner is not None and col_owner < len(row):
+                val = row[col_owner]
+                if val:
+                    owner_name = str(val).strip()
+                    try:
+                        owner = SprintMember.objects.get(name__iexact=owner_name, is_active=True)
+                    except SprintMember.DoesNotExist:
+                        errors.append(f'Row {row_num}: Owner "{owner_name}" not found — story created without owner')
+
+            if col_streams is not None and col_streams < len(row):
+                val = row[col_streams]
+                if val:
+                    valid = [s[0] for s in STREAM_CHOICES]
+                    raw = [s.strip() for s in str(val).split(',')]
+                    involved_streams = [s for s in raw if s in valid]
+
+            if col_sp is not None and col_sp < len(row):
+                val = row[col_sp]
+                try:
+                    final_sp = float(val) if val is not None else None
+                except (ValueError, TypeError):
+                    final_sp = None
+
+            UserStory.objects.create(
+                title=title,
+                description=description,
+                owner=owner,
+                sprint=sprint,
+                involved_streams=involved_streams,
+                final_sp=final_sp,
+                order=UserStory.objects.count(),
+            )
+            created += 1
+
+        return JsonResponse({
+            'ok': True,
+            'created': created,
+            'skipped': skipped,
+            'errors': errors,
+            'sprint_name': sprint.name,
+        })
+
+    except Exception as e:
+        return JsonResponse({'error': f'Failed to read file: {str(e)}'}, status=400)
