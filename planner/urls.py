@@ -26,4 +26,5 @@ urlpatterns = [
     path('sm/stories/<int:us_id>/assign-sp/', views.assign_sp, name='assign_sp'),
     path('sm/stories/<int:us_id>/edit-stream-assignment/', views.edit_stream_assignment, name='edit_stream_assignment'),
     path('api/stories/<int:us_id>/', views.get_story_detail, name='story_detail'),
+    path('sm/sprints/<int:sprint_id>/export/', views.export_sprint, name='export_sprint'),
 ]
