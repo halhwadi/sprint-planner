@@ -454,3 +454,185 @@ def get_story_detail(request, us_id):
         'voting_status': story.voting_status, 'vote_average': story.vote_average,
         'sprint_id': story.sprint_id, 'stream_assignments': assignments,
     })
+
+@login_required
+def export_sprint(request, sprint_id):
+    if not request.user.is_staff:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from django.http import HttpResponse
+
+    sprint = get_object_or_404(Sprint, id=sprint_id)
+    stories = UserStory.objects.filter(sprint=sprint).prefetch_related(
+        'stream_assignments__member', 'votes__member'
+    ).select_related('owner')
+
+    wb = openpyxl.Workbook()
+
+    # ── Sheet 1: User Stories ──
+    ws1 = wb.active
+    ws1.title = 'User Stories'
+
+    header_fill = PatternFill('solid', fgColor='4F46E5')
+    header_font = Font(bold=True, color='FFFFFF', size=11)
+    alt_fill = PatternFill('solid', fgColor='F1F0FF')
+    border = Border(
+        left=Side(style='thin', color='CCCCCC'),
+        right=Side(style='thin', color='CCCCCC'),
+        top=Side(style='thin', color='CCCCCC'),
+        bottom=Side(style='thin', color='CCCCCC'),
+    )
+
+    headers = ['#', 'User Story', 'Description', 'Owner', 'Owner Stream',
+               'Involved Streams', 'Vote Average', 'Final SP', 'Voting Status']
+    ws1.column_dimensions['A'].width = 5
+    ws1.column_dimensions['B'].width = 45
+    ws1.column_dimensions['C'].width = 35
+    ws1.column_dimensions['D'].width = 20
+    ws1.column_dimensions['E'].width = 14
+    ws1.column_dimensions['F'].width = 30
+    ws1.column_dimensions['G'].width = 14
+    ws1.column_dimensions['H'].width = 10
+    ws1.column_dimensions['I'].width = 16
+
+    # Sprint info header
+    ws1.merge_cells('A1:I1')
+    ws1['A1'] = f'Sprint: {sprint.name}'
+    ws1['A1'].font = Font(bold=True, size=13, color='1E1B4B')
+    ws1['A1'].fill = PatternFill('solid', fgColor='EEF2FF')
+    ws1['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws1.row_dimensions[1].height = 28
+
+    if sprint.goal:
+        ws1.merge_cells('A2:I2')
+        ws1['A2'] = f'Goal: {sprint.goal}'
+        ws1['A2'].font = Font(italic=True, color='6366F1')
+        ws1['A2'].alignment = Alignment(horizontal='center')
+
+    if sprint.start_date and sprint.end_date:
+        ws1.merge_cells('A3:I3')
+        ws1['A3'] = f'{sprint.start_date}  →  {sprint.end_date}'
+        ws1['A3'].font = Font(color='888888', size=10)
+        ws1['A3'].alignment = Alignment(horizontal='center')
+
+    header_row = 5
+    for col, h in enumerate(headers, 1):
+        cell = ws1.cell(row=header_row, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border = border
+    ws1.row_dimensions[header_row].height = 22
+
+    for i, story in enumerate(stories, 1):
+        row = header_row + i
+        fill = alt_fill if i % 2 == 0 else None
+        values = [
+            i,
+            story.title,
+            story.description or '',
+            story.owner.name if story.owner else '—',
+            story.owner.stream if story.owner else '—',
+            ', '.join(story.involved_streams) if story.involved_streams else '—',
+            story.vote_average or '—',
+            story.final_sp or '—',
+            story.get_voting_status_display(),
+        ]
+        for col, val in enumerate(values, 1):
+            cell = ws1.cell(row=row, column=col, value=val)
+            cell.border = border
+            cell.alignment = Alignment(vertical='center', wrap_text=True)
+            if fill:
+                cell.fill = fill
+        ws1.row_dimensions[row].height = 18
+
+    # ── Sheet 2: Stream Assignments ──
+    ws2 = wb.create_sheet('Stream Assignments')
+    ws2.column_dimensions['A'].width = 45
+    ws2.column_dimensions['B'].width = 16
+    ws2.column_dimensions['C'].width = 22
+    ws2.column_dimensions['D'].width = 16
+    ws2.column_dimensions['E'].width = 10
+
+    ws2.merge_cells('A1:E1')
+    ws2['A1'] = f'Stream SP Assignments — {sprint.name}'
+    ws2['A1'].font = Font(bold=True, size=13, color='1E1B4B')
+    ws2['A1'].fill = PatternFill('solid', fgColor='EEF2FF')
+    ws2['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws2.row_dimensions[1].height = 28
+
+    h2 = ['User Story', 'Stream', 'Assigned To', 'Member Stream', 'SP']
+    for col, h in enumerate(h2, 1):
+        cell = ws2.cell(row=3, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = border
+
+    r = 4
+    for story in stories:
+        for sa in story.stream_assignments.all():
+            fill = alt_fill if r % 2 == 0 else None
+            vals = [story.title, sa.stream, sa.member.name, sa.member.stream, sa.sp]
+            for col, val in enumerate(vals, 1):
+                cell = ws2.cell(row=r, column=col, value=val)
+                cell.border = border
+                cell.alignment = Alignment(vertical='center')
+                if fill:
+                    cell.fill = fill
+            r += 1
+
+    # ── Sheet 3: Bandwidth Summary ──
+    ws3 = wb.create_sheet('Bandwidth Summary')
+    ws3.column_dimensions['A'].width = 25
+    ws3.column_dimensions['B'].width = 16
+    ws3.column_dimensions['C'].width = 14
+    ws3.column_dimensions['D'].width = 14
+    ws3.column_dimensions['E'].width = 14
+
+    ws3.merge_cells('A1:E1')
+    ws3['A1'] = f'Bandwidth Summary — {sprint.name}'
+    ws3['A1'].font = Font(bold=True, size=13, color='1E1B4B')
+    ws3['A1'].fill = PatternFill('solid', fgColor='EEF2FF')
+    ws3['A1'].alignment = Alignment(horizontal='center', vertical='center')
+    ws3.row_dimensions[1].height = 28
+
+    h3 = ['Member', 'Stream', 'Owned SP', 'Stream SP', 'Total SP']
+    for col, h in enumerate(h3, 1):
+        cell = ws3.cell(row=3, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = border
+
+    members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
+    r = 4
+    for m in members:
+        owned = sum(us.final_sp or 0 for us in m.owned_stories.filter(final_sp__isnull=False, sprint=sprint))
+        assigned = sum(a.sp for a in m.stream_assignments.filter(user_story__sprint=sprint))
+        total = owned + assigned
+        if total == 0:
+            continue
+        fill = alt_fill if r % 2 == 0 else None
+        over_fill = PatternFill('solid', fgColor='FECACA') if total > 8 else fill
+        vals = [m.name, m.stream, owned, assigned, total]
+        for col, val in enumerate(vals, 1):
+            cell = ws3.cell(row=r, column=col, value=val)
+            cell.border = border
+            cell.alignment = Alignment(horizontal='center' if col > 2 else 'left', vertical='center')
+            if col == 5 and total > 8:
+                cell.fill = over_fill
+                cell.font = Font(bold=True, color='DC2626')
+            elif fill:
+                cell.fill = fill
+        r += 1
+
+    # Send response
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{sprint.name.replace(" ", "_")}_export.xlsx"'
+    wb.save(response)
+    return response
