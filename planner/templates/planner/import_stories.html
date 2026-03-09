@@ -1,0 +1,153 @@
+{% extends 'planner/base.html' %}
+{% block title %}Import User Stories — {{ sprint.name }}{% endblock %}
+{% block content %}
+<div class="container" style="max-width:720px;">
+  <div class="mt-2 mb-4">
+    <a href="{% url 'board' %}?sprint={{ sprint.id }}" class="text-sm text-muted">← Back to Board</a>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:1.2rem;font-weight:700;margin-bottom:4px;">⬆️ Import User Stories</h2>
+    <p class="text-muted text-sm mb-4">Importing into: <strong style="color:var(--accent2);">{{ sprint.name }}</strong></p>
+
+    <!-- Format guide -->
+    <div style="background:var(--surface);border-radius:8px;padding:16px;margin-bottom:20px;border:1px solid var(--border);">
+      <div class="section-title">📋 Excel Format Guide</div>
+      <p class="text-sm text-muted mb-3">Row 1 must be headers. Only <strong>Title</strong> is required. All other columns are optional.</p>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+          <thead>
+            <tr style="background:var(--card);">
+              <th style="padding:8px 12px;text-align:left;border:1px solid var(--border);color:var(--accent2);">Column Header</th>
+              <th style="padding:8px 12px;text-align:left;border:1px solid var(--border);color:var(--accent2);">Required</th>
+              <th style="padding:8px 12px;text-align:left;border:1px solid var(--border);color:var(--accent2);">Example Value</th>
+              <th style="padding:8px 12px;text-align:left;border:1px solid var(--border);color:var(--accent2);">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding:8px 12px;border:1px solid var(--border);font-weight:600;">Title</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);color:var(--green);">✅ Yes</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);">As a user I want to...</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);color:var(--muted);">Also accepts "User Story" or "Story"</td>
+            </tr>
+            <tr style="background:var(--surface);">
+              <td style="padding:8px 12px;border:1px solid var(--border);">Description</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);color:var(--muted);">Optional</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);">Additional details...</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);color:var(--muted);">Also accepts "Desc" or "Detail"</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px;border:1px solid var(--border);">Owner</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);color:var(--muted);">Optional</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);">Ahmed Al-Rashid</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);color:var(--muted);">Must match exact member name</td>
+            </tr>
+            <tr style="background:var(--surface);">
+              <td style="padding:8px 12px;border:1px solid var(--border);">Streams</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);color:var(--muted);">Optional</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);">Mobile, EIP</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);color:var(--muted);">Comma separated. Valid: {% for s in streams %}{{ s }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px;border:1px solid var(--border);">SP</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);color:var(--muted);">Optional</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);">5</td>
+              <td style="padding:8px 12px;border:1px solid var(--border);color:var(--muted);">Also accepts "Story Points" or "Estimate"</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Team members reference -->
+      <div class="mt-3">
+        <div class="text-sm text-muted mb-2" style="font-weight:600;">Current team members (for Owner column):</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          {% for m in members %}
+          <span style="background:var(--card);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:0.75rem;">
+            {{ m.name }} <span class="text-muted">({{ m.stream }})</span>
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload form -->
+    <div id="uploadSection">
+      <div class="form-group">
+        <label>Select Excel File (.xlsx)</label>
+        <input type="file" id="excelFile" accept=".xlsx,.xls" style="padding:10px;">
+      </div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;" onclick="submitImport()">
+        ⬆️ Import Stories into {{ sprint.name }}
+      </button>
+    </div>
+
+    <!-- Results -->
+    <div id="resultSection" style="display:none;margin-top:20px;">
+      <div id="resultContent"></div>
+      <div class="flex gap-3 mt-4">
+        <button class="btn btn-ghost" onclick="resetForm()">⬆️ Import Another File</button>
+        <a id="boardLink" href="{% url 'board' %}?sprint={{ sprint.id }}" class="btn btn-primary">View Sprint Board →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function submitImport() {
+  const fileInput = document.getElementById('excelFile');
+  if (!fileInput.files.length) { toast('Please select an Excel file', 'error'); return; }
+
+  const formData = new FormData();
+  formData.append('excel_file', fileInput.files[0]);
+  formData.append('csrfmiddlewaretoken', getCookie('csrftoken'));
+
+  const btn = event.target;
+  btn.textContent = '⏳ Importing...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(window.location.href, { method: 'POST', body: formData });
+    const data = await res.json();
+
+    document.getElementById('uploadSection').style.display = 'none';
+    document.getElementById('resultSection').style.display = 'block';
+
+    if (data.ok) {
+      let html = `
+        <div style="background:#1a3320;border:1px solid var(--green);border-radius:8px;padding:16px;margin-bottom:12px;">
+          <div style="color:var(--green);font-weight:700;font-size:1rem;margin-bottom:8px;">✅ Import Complete</div>
+          <div class="text-sm">
+            <div>📥 Stories created: <strong>${data.created}</strong></div>
+            <div>⏭️ Rows skipped (empty): <strong>${data.skipped}</strong></div>
+          </div>
+        </div>`;
+      if (data.errors && data.errors.length) {
+        html += `<div style="background:#2d1f1f;border:1px solid var(--red);border-radius:8px;padding:14px;">
+          <div style="color:var(--red);font-weight:600;margin-bottom:8px;">⚠️ Warnings (stories still created)</div>
+          ${data.errors.map(e => `<div class="text-sm" style="color:var(--muted);margin-bottom:4px;">• ${e}</div>`).join('')}
+        </div>`;
+      }
+      document.getElementById('resultContent').innerHTML = html;
+    } else {
+      document.getElementById('resultContent').innerHTML = `
+        <div style="background:#2d1f1f;border:1px solid var(--red);border-radius:8px;padding:16px;">
+          <div style="color:var(--red);font-weight:700;margin-bottom:6px;">❌ Import Failed</div>
+          <div class="text-sm text-muted">${data.error}</div>
+        </div>`;
+    }
+  } catch(e) {
+    toast('Unexpected error: ' + e.message, 'error');
+    btn.textContent = '⬆️ Import Stories';
+    btn.disabled = false;
+  }
+}
+
+function resetForm() {
+  document.getElementById('excelFile').value = '';
+  document.getElementById('uploadSection').style.display = 'block';
+  document.getElementById('resultSection').style.display = 'none';
+}
+</script>
+{% endblock %}
