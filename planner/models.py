@@ -82,7 +82,7 @@ class OrganizationMember(models.Model):
         ('viewer',       'Viewer'),
     ]
 
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='members', null=True, blank=True  # temporary)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='members', null=True, blank=True)
     user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='org_memberships')
     role         = models.CharField(max_length=20, choices=ROLE_CHOICES, default='voter')
     joined_at    = models.DateTimeField(auto_now_add=True)
@@ -133,7 +133,7 @@ US_STATUS = [
 
 class Sprint(models.Model):
     models.ForeignKey(
-    Organization, on_delete=models.CASCADE, related_name='sprints', null=True, blank=True  # temporary)
+    Organization, on_delete=models.CASCADE, related_name='sprints', null=True, blank=True)
     name         = models.CharField(max_length=100)
     goal         = models.TextField(blank=True)
     start_date   = models.DateField(null=True, blank=True)
@@ -156,7 +156,7 @@ class Sprint(models.Model):
 # ─────────────────────────────────────────
 
 class SprintMember(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='sprint_members', null=True, blank=True  # temporary)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='sprint_members', null=True, blank=True)
     user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sprint_memberships')
     stream       = models.ForeignKey(Stream, on_delete=models.SET_NULL, null=True, blank=True, related_name='members')
     is_active    = models.BooleanField(default=True)
@@ -183,7 +183,7 @@ class SprintMember(models.Model):
 # ─────────────────────────────────────────
 
 class UserStory(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='user_stories', null=True, blank=True  # temporary)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='user_stories', null=True, blank=True)
     sprint          = models.ForeignKey(Sprint, null=True, blank=True, on_delete=models.SET_NULL, related_name='user_stories')
     title           = models.CharField(max_length=300)
     description     = models.TextField(blank=True)
