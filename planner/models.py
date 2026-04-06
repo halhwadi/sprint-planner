@@ -2,7 +2,17 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
-
+# Temporary — kept for views.py compatibility until Task 4
+STREAM_CHOICES = [
+    ('CRM', 'CRM'),
+    ('EIP', 'EIP'),
+    ('Website', 'Website'),
+    ('Mobile', 'Mobile'),
+    ('DevOps', 'DevOps'),
+    ('SiteCore', 'SiteCore'),
+    ('UX', 'UX'),
+    ('QA', 'QA'),
+]
 # ─────────────────────────────────────────
 # ORGANIZATION (Root Tenant)
 # ─────────────────────────────────────────
