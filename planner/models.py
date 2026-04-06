@@ -20,7 +20,7 @@ STREAM_CHOICES = [
 class Organization(models.Model):
     name        = models.CharField(max_length=200)
     slug        = models.SlugField(max_length=200, unique=True)
-    owner       = models.ForeignKey(User, on_delete=models.PROTECT, related_name='owned_orgs')
+    owner = models.ForeignKey(User, on_delete=models.PROTECT, related_name='owned_orgs', null=True, blank=True)
     created_at  = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -83,7 +83,7 @@ class OrganizationMember(models.Model):
     ]
 
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='members', null=True, blank=True)
-    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='org_memberships')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='org_memberships', null=True, blank=True)
     role         = models.CharField(max_length=20, choices=ROLE_CHOICES, default='voter')
     joined_at    = models.DateTimeField(auto_now_add=True)
 
@@ -157,7 +157,7 @@ class Sprint(models.Model):
 
 class SprintMember(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='sprint_members', null=True, blank=True)
-    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sprint_memberships')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sprint_memberships', null=True, blank=True)
     stream       = models.ForeignKey(Stream, on_delete=models.SET_NULL, null=True, blank=True, related_name='members')
     is_active    = models.BooleanField(default=True)
     created_at   = models.DateTimeField(auto_now_add=True)
