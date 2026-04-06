@@ -228,7 +228,7 @@ class Vote(models.Model):
 
 class StreamAssignment(models.Model):
     user_story = models.ForeignKey(UserStory, on_delete=models.CASCADE, related_name='stream_assignments')
-    stream     = models.ForeignKey(Stream, on_delete=models.CASCADE, related_name='assignments')
+    stream     = models.CharField(max_length=20)
     member     = models.ForeignKey(SprintMember, on_delete=models.CASCADE, related_name='stream_assignments')
     sp         = models.FloatField()
 
