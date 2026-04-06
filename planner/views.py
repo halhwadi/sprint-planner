@@ -47,7 +47,7 @@ def sm_pick_member(request):
             return redirect('sm_panel')
         except SprintMember.DoesNotExist:
             error = 'Please select a valid team member.'
-    members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
+    members = SprintMember.objects.filter(is_active=True).order_by('stream')
     return render(request, 'planner/sm_pick_member.html', {'members': members, 'error': error})
 
 
@@ -61,7 +61,7 @@ def join(request):
             return redirect('board')
         except SprintMember.DoesNotExist:
             pass
-    members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
+    members = SprintMember.objects.filter(is_active=True).order_by('stream')
     return render(request, 'planner/join.html', {'members': members})
 
 
@@ -98,7 +98,7 @@ def board(request):
     else:
         stories = stories_qs.all()
 
-    all_members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
+    all_members = SprintMember.objects.filter(is_active=True).order_by('stream')
 
     bandwidth = []
     for m in all_members:
@@ -220,11 +220,11 @@ def submit_vote(request, us_id):
 def sm_panel(request):
     if not request.user.is_staff:
         return redirect('board')
-    members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
+    members = SprintMember.objects.filter(is_active=True).order_by('stream')
     sprints = Sprint.objects.all()
     active_sprint = Sprint.objects.filter(is_active=True).first()
     stories = UserStory.objects.prefetch_related('stream_assignments__member').select_related('owner', 'sprint').all()
-    all_members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
+    all_members = SprintMember.objects.filter(is_active=True).order_by('stream')
     bandwidth = []
     for m in all_members:
         total = m.total_sp(sprint=active_sprint)
@@ -607,7 +607,7 @@ def export_sprint(request, sprint_id):
         cell.alignment = Alignment(horizontal='center', vertical='center')
         cell.border = border
 
-    members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
+    members = SprintMember.objects.filter(is_active=True).order_by('stream')
     r = 4
     for m in members:
         owned = sum(us.final_sp or 0 for us in m.owned_stories.filter(final_sp__isnull=False, sprint=sprint))
@@ -646,7 +646,7 @@ def import_stories(request, sprint_id):
     sprint = get_object_or_404(Sprint, id=sprint_id)
 
     if request.method == 'GET':
-        members = SprintMember.objects.filter(is_active=True).order_by('stream', 'name')
+        members = SprintMember.objects.filter(is_active=True).order_by('stream')
         return render(request, 'planner/import_stories.html', {
             'sprint': sprint,
             'members': members,
