@@ -158,7 +158,7 @@ class Sprint(models.Model):
 class SprintMember(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='sprint_members', null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sprint_memberships', null=True, blank=True)
-    stream       = models.ForeignKey(Stream, on_delete=models.SET_NULL, null=True, blank=True, related_name='members')
+    stream       = models.CharField(max_length=20, blank=True)
     is_active    = models.BooleanField(default=True)
     created_at   = models.DateTimeField(auto_now_add=True)
 
