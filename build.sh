@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 set -o errexit
 pip install -r requirements.txt
-
-# Delete old migrations and regenerate fresh
-find . -path "*/planner/migrations/0*.py" -delete
 python manage.py makemigrations planner --noinput
 python manage.py collectstatic --noinput
 python manage.py migrate
-
 python manage.py shell -c "
 from django.contrib.auth.models import User
 from planner.models import Organization, Subscription, OrganizationMember
