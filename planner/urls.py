@@ -1,8 +1,10 @@
 from django.urls import path
+from django.views.generic import RedirectView
 from . import views
 
 urlpatterns = [
     path('', views.home, name='home'),
+    path('join/', RedirectView.as_view(pattern_name='sm_login'), name='join'),  # legacy redirect
     path('login/', views.sm_login, name='sm_login'),
     path('logout/', views.sm_logout, name='sm_logout'),
     path('board/', views.board, name='board'),
