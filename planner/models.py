@@ -1,41 +1,31 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
-from datetime import timedelta
-# Temporary — kept for views.py compatibility until Task 4
-STREAM_CHOICES = [
-    ('CRM', 'CRM'),
-    ('EIP', 'EIP'),
-    ('Website', 'Website'),
-    ('Mobile', 'Mobile'),
-    ('DevOps', 'DevOps'),
-    ('SiteCore', 'SiteCore'),
-    ('UX', 'UX'),
-    ('QA', 'QA'),
-]
+
+
 # ─────────────────────────────────────────
-# ORGANIZATION (Root Tenant)
+# ORGANIZATION
 # ─────────────────────────────────────────
 
 class Organization(models.Model):
-    name        = models.CharField(max_length=200)
-    slug        = models.SlugField(max_length=200, unique=True)
-    owner = models.ForeignKey(User, on_delete=models.PROTECT, related_name='owned_orgs', null=True, blank=True)
-    created_at  = models.DateTimeField(auto_now_add=True)
+    name       = models.CharField(max_length=200)
+    slug       = models.SlugField(max_length=200, unique=True)
+    owner      = models.ForeignKey(User, on_delete=models.PROTECT, related_name='owned_orgs')
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
 
 
 # ─────────────────────────────────────────
-# SUBSCRIPTION (One per Org)
+# SUBSCRIPTION
 # ─────────────────────────────────────────
 
 class Subscription(models.Model):
     PLAN_CHOICES = [
-        ('starter',  'Starter – $12/mo'),
-        ('pro',      'Pro – $29/mo'),
-        ('business', 'Business – $69/mo'),
+        ('starter',  'Starter'),
+        ('pro',      'Pro'),
+        ('business', 'Business'),
     ]
     STATUS_CHOICES = [
         ('trialing',  'Trialing'),
@@ -47,7 +37,7 @@ class Subscription(models.Model):
     organization           = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name='subscription')
     plan                   = models.CharField(max_length=20, choices=PLAN_CHOICES, default='starter')
     status                 = models.CharField(max_length=20, choices=STATUS_CHOICES, default='trialing')
-    trial_end              = models.DateTimeField(default=timezone.now)
+    trial_end              = models.DateTimeField()
     paddle_customer_id     = models.CharField(max_length=200, blank=True)
     paddle_subscription_id = models.CharField(max_length=200, blank=True)
     updated_at             = models.DateTimeField(auto_now=True)
@@ -66,12 +56,11 @@ class Subscription(models.Model):
     def days_left_in_trial(self):
         if self.status != 'trialing':
             return 0
-        delta = self.trial_end - timezone.now()
-        return max(0, delta.days)
+        return max(0, (self.trial_end - timezone.now()).days)
 
 
 # ─────────────────────────────────────────
-# ORGANIZATION MEMBER (User ↔ Org + Role)
+# ORGANIZATION MEMBER
 # ─────────────────────────────────────────
 
 class OrganizationMember(models.Model):
@@ -82,8 +71,8 @@ class OrganizationMember(models.Model):
         ('viewer',       'Viewer'),
     ]
 
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='members', null=True, blank=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='org_memberships', null=True, blank=True)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='members')
+    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='org_memberships')
     role         = models.CharField(max_length=20, choices=ROLE_CHOICES, default='voter')
     joined_at    = models.DateTimeField(auto_now_add=True)
 
@@ -104,7 +93,7 @@ class OrganizationMember(models.Model):
 
 
 # ─────────────────────────────────────────
-# STREAM (Per-Org, replaces hardcoded list)
+# STREAM
 # ─────────────────────────────────────────
 
 class Stream(models.Model):
@@ -114,26 +103,52 @@ class Stream(models.Model):
 
     class Meta:
         unique_together = ('organization', 'name')
-        ordering = ['order', 'name']
+        ordering        = ['order', 'name']
 
     def __str__(self):
-        return f"{self.organization.name} / {self.name}"
+        return self.name
+
+
+# ─────────────────────────────────────────
+# SPRINT MEMBER
+# ─────────────────────────────────────────
+
+class SprintMember(models.Model):
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='sprint_members')
+    user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sprint_memberships')
+    stream       = models.ForeignKey(Stream, on_delete=models.SET_NULL, null=True, blank=True, related_name='members')
+    is_active    = models.BooleanField(default=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('organization', 'user')
+
+    def __str__(self):
+        name        = self.user.get_full_name() or self.user.username
+        stream_name = self.stream.name if self.stream else '—'
+        return f"{name} ({stream_name})"
+
+    def display_name(self):
+        return self.user.get_full_name() or self.user.username
+
+    def total_sp(self, sprint=None):
+        owned_qs    = self.owned_stories.filter(final_sp__isnull=False)
+        assigned_qs = self.stream_assignments.all()
+        if sprint:
+            owned_qs    = owned_qs.filter(sprint=sprint)
+            assigned_qs = assigned_qs.filter(user_story__sprint=sprint)
+        return (
+            sum(us.final_sp or 0 for us in owned_qs) +
+            sum(a.sp for a in assigned_qs)
+        )
 
 
 # ─────────────────────────────────────────
 # SPRINT
 # ─────────────────────────────────────────
 
-US_STATUS = [
-    ('pending', 'Pending'),
-    ('voting',  'Voting Open'),
-    ('closed',  'Voting Closed'),
-]
-
-
 class Sprint(models.Model):
-    models.ForeignKey(
-    Organization, on_delete=models.CASCADE, related_name='sprints', null=True, blank=True)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='sprints')
     name         = models.CharField(max_length=100)
     goal         = models.TextField(blank=True)
     start_date   = models.DateField(null=True, blank=True)
@@ -152,49 +167,28 @@ class Sprint(models.Model):
 
 
 # ─────────────────────────────────────────
-# SPRINT MEMBER (Participant in a session)
-# ─────────────────────────────────────────
-
-class SprintMember(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='sprint_members', null=True, blank=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sprint_memberships', null=True, blank=True)
-    name         = models.CharField(max_length=100, blank=True)
-    stream       = models.CharField(max_length=20, blank=True)
-    is_active    = models.BooleanField(default=True)
-    created_at   = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('organization', 'user')
-
-    def __str__(self):
-        stream_name = self.stream.name if self.stream else '—'
-        return f"{self.user.get_full_name() or self.user.email} ({stream_name})"
-
-    def total_sp(self, sprint=None):
-        owned_qs    = self.owned_stories.filter(final_sp__isnull=False)
-        assigned_qs = self.stream_assignments.all()
-        if sprint:
-            owned_qs    = owned_qs.filter(sprint=sprint)
-            assigned_qs = assigned_qs.filter(user_story__sprint=sprint)
-        return sum(us.final_sp or 0 for us in owned_qs) + sum(a.sp for a in assigned_qs)
-
-
-# ─────────────────────────────────────────
 # USER STORY
 # ─────────────────────────────────────────
 
+US_STATUS = [
+    ('pending', 'Pending'),
+    ('voting',  'Voting Open'),
+    ('closed',  'Voting Closed'),
+]
+
+
 class UserStory(models.Model):
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='user_stories', null=True, blank=True)
-    sprint          = models.ForeignKey(Sprint, null=True, blank=True, on_delete=models.SET_NULL, related_name='user_stories')
-    title           = models.CharField(max_length=300)
-    description     = models.TextField(blank=True)
-    owner           = models.ForeignKey(SprintMember, null=True, blank=True, on_delete=models.SET_NULL, related_name='owned_stories')
+    organization     = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='user_stories')
+    sprint           = models.ForeignKey(Sprint, null=True, blank=True, on_delete=models.SET_NULL, related_name='user_stories')
+    title            = models.CharField(max_length=300)
+    description      = models.TextField(blank=True)
+    owner            = models.ForeignKey(SprintMember, null=True, blank=True, on_delete=models.SET_NULL, related_name='owned_stories')
     involved_streams = models.JSONField(default=list)
-    final_sp        = models.FloatField(null=True, blank=True)
-    voting_status   = models.CharField(max_length=20, choices=US_STATUS, default='pending')
-    vote_average    = models.FloatField(null=True, blank=True)
-    order           = models.PositiveIntegerField(default=0)
-    created_at      = models.DateTimeField(auto_now_add=True)
+    final_sp         = models.FloatField(null=True, blank=True)
+    voting_status    = models.CharField(max_length=20, choices=US_STATUS, default='pending')
+    vote_average     = models.FloatField(null=True, blank=True)
+    order            = models.PositiveIntegerField(default=0)
+    created_at       = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['order', 'created_at']
@@ -229,7 +223,7 @@ class Vote(models.Model):
 
 class StreamAssignment(models.Model):
     user_story = models.ForeignKey(UserStory, on_delete=models.CASCADE, related_name='stream_assignments')
-    stream     = models.CharField(max_length=20)
+    stream     = models.ForeignKey(Stream, on_delete=models.CASCADE, related_name='assignments')
     member     = models.ForeignKey(SprintMember, on_delete=models.CASCADE, related_name='stream_assignments')
     sp         = models.FloatField()
 
