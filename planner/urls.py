@@ -1,17 +1,33 @@
 from django.urls import path
 from django.views.generic import RedirectView
 from . import views
+from . import auth_views
 
 urlpatterns = [
-    path('', views.home, name='home'),
-    path('join/', RedirectView.as_view(pattern_name='sm_login'), name='join'),  # legacy redirect
-    path('login/', views.sm_login, name='sm_login'),
-    path('logout/', views.sm_logout, name='sm_logout'),
+    # ── Auth ──
+    path('signup/', auth_views.signup, name='signup'),
+    path('login/', auth_views.user_login, name='user_login'),
+    path('logout/', auth_views.user_logout, name='user_logout'),
+    path('verify-email/sent/', auth_views.verify_email_sent, name='verify_email_sent'),
+    path('verify-email/<uuid:token>/', auth_views.verify_email, name='verify_email'),
+    path('onboarding/', auth_views.onboarding, name='onboarding'),
+    path('password-reset/', auth_views.password_reset_request, name='password_reset_request'),
+    path('password-reset/<uuid:token>/', auth_views.password_reset_confirm, name='password_reset_confirm'),
+    path('password-reset/done/', auth_views.password_reset_done, name='password_reset_done'),
+
+    # ── Legacy redirects ──
+    path('', RedirectView.as_view(pattern_name='user_login'), name='home'),
+    path('join/', RedirectView.as_view(pattern_name='user_login'), name='join'),
+    path('sm_login/', RedirectView.as_view(pattern_name='user_login'), name='sm_login'),
+
+    # ── App ──
     path('board/', views.board, name='board'),
+    path('onboarding/', auth_views.onboarding, name='onboarding'),
     path('vote/<int:us_id>/', views.vote_room, name='vote_room'),
     path('vote/<int:us_id>/status/', views.vote_status, name='vote_status'),
     path('vote/<int:us_id>/submit/', views.submit_vote, name='submit_vote'),
-    # SM
+
+    # ── SM ──
     path('sm/panel/', views.sm_panel, name='sm_panel'),
     path('sm/members/add/', views.add_member, name='add_member'),
     path('sm/members/<int:member_id>/remove/', views.remove_member, name='remove_member'),
