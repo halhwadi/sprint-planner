@@ -86,3 +86,17 @@ SESSION_COOKIE_AGE  = 86400 * 7  # 7 days
 
 # Email — console for now, SendGrid in Task 2
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# Resend email
+RESEND_API_KEY     = os.environ.get('RESEND_API_KEY', '')
+DEFAULT_FROM_EMAIL = 'SprintFlow <noreply@contact.getsprintflow.co>'
+EMAIL_BACKEND      = 'django.core.mail.backends.console.EmailBackend'  # fallback if no key
+
+# Auth
+LOGIN_URL           = '/login/'
+LOGIN_REDIRECT_URL  = '/sm/panel/'
+LOGOUT_REDIRECT_URL = '/login/'
+SESSION_COOKIE_AGE  = 86400 * 7
+
+# App URL — used in emails
+APP_URL = os.environ.get('APP_URL', 'https://getsprintflow.co')
