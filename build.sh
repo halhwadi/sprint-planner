@@ -2,6 +2,30 @@
 set -o errexit
 pip install -r requirements.txt
 
+# Drop all planner tables and rebuild from scratch
+python manage.py shell -c "
+from django.db import connection
+cursor = connection.cursor()
+cursor.execute('''
+    DROP TABLE IF EXISTS
+        planner_streamassignment,
+        planner_vote,
+        planner_userstory,
+        planner_sprintmember,
+        planner_sprint,
+        planner_stream,
+        planner_organizationmember,
+        planner_emailverificationtoken,
+        planner_passwordresettoken,
+        planner_subscription,
+        planner_organization
+    CASCADE;
+''')
+print('All planner tables dropped')
+"
+
+# Wipe and regenerate migrations cleanly
+find . -path "*/planner/migrations/0*.py" -delete
 python manage.py makemigrations planner --noinput
 python manage.py collectstatic --noinput
 python manage.py migrate
