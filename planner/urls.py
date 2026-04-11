@@ -20,6 +20,7 @@ urlpatterns = [
     path('join/', RedirectView.as_view(pattern_name='user_login'), name='join'),
     path('sm_login/', RedirectView.as_view(pattern_name='user_login'), name='sm_login'),
     path('sm/pick-member/', RedirectView.as_view(pattern_name='sm_panel'), name='sm_pick_member'),
+    path('sm/logout/', RedirectView.as_view(pattern_name='user_logout'), name='sm_logout'),
 
     # ── App ──
     path('board/', views.board, name='board'),
