@@ -1,0 +1,10 @@
+{% extends "planner/base_auth.html" %}
+{% block title %}Invalid Link — SprintFlow{% endblock %}
+{% block content %}
+<div class="auth-box" style="text-align:center">
+    <div style="font-size:48px">❌</div>
+    <h1 class="auth-title">{% if expired %}Link expired{% else %}Invalid link{% endif %}</h1>
+    <p>{% if expired %}This verification link has expired. Please sign up again.{% else %}This link is invalid or has already been used.{% endif %}</p>
+    <a href="{% url 'signup' %}" class="btn-primary" style="display:inline-block;margin-top:16px">Back to Sign Up</a>
+</div>
+{% endblock %}
