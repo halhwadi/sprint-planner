@@ -1,9 +1,33 @@
 #!/usr/bin/env bash
 set -o errexit
 pip install -r requirements.txt
-python manage.py makemigrations planner --noinput
+
+# Drop all planner tables and migration history for clean rebuild
+python manage.py shell -c "
+from django.db import connection
+cursor = connection.cursor()
+cursor.execute('''
+    DROP TABLE IF EXISTS
+        planner_streamassignment,
+        planner_vote,
+        planner_userstory,
+        planner_sprintmember,
+        planner_sprint,
+        planner_stream,
+        planner_organizationmember,
+        planner_emailverificationtoken,
+        planner_passwordresettoken,
+        planner_subscription,
+        planner_organization
+    CASCADE;
+''')
+cursor.execute(\"DELETE FROM django_migrations WHERE app = 'planner';\")
+print('Clean slate ready')
+"
+
 python manage.py collectstatic --noinput
 python manage.py migrate
+
 python manage.py shell -c "
 from django.contrib.auth.models import User
 from planner.models import Organization, Subscription, OrganizationMember
