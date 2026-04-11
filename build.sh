@@ -2,8 +2,6 @@
 set -o errexit
 pip install -r requirements.txt
 
-# Wipe and regenerate migrations cleanly
-find . -path "*/planner/migrations/0*.py" -delete
 python manage.py makemigrations planner --noinput
 python manage.py collectstatic --noinput
 python manage.py migrate
