@@ -11,7 +11,14 @@ from django.utils import timezone
 from datetime import timedelta
 
 if not User.objects.filter(username='scrummaster').exists():
-    user = User.objects.create_superuser('scrummaster', 'admin@sprintflow.co', 'Sprint@2024')
+    user = User.objects.create_superuser(
+        username='scrummaster',
+        email='admin@getsprintflow.co',
+        password='Sprint@2024',
+        first_name='Scrum',
+        last_name='Master',
+        is_active=True,
+    )
     print('Superuser created')
 else:
     user = User.objects.get(username='scrummaster')
