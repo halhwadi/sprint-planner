@@ -1,0 +1,11 @@
+{% extends "planner/base_auth.html" %}
+{% block title %}Invitation Expired — SprintFlow{% endblock %}
+{% block content %}
+<div class="auth-box" style="text-align:center">
+    <div style="font-size:48px">⏰</div>
+    <h1 class="auth-title">Invitation expired</h1>
+    <p>This invitation link has expired. Please ask your admin to send a new one.</p>
+    <a href="{% url 'user_login' %}" class="btn-primary"
+       style="display:inline-block;margin-top:16px">Back to Login</a>
+</div>
+{% endblock %}
