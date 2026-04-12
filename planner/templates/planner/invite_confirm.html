@@ -1,0 +1,57 @@
+{% extends "planner/base_auth.html" %}
+{% block title %}Accept Invitation — SprintFlow{% endblock %}
+{% block content %}
+<div class="auth-box">
+    <div class="auth-logo">⚡ SprintFlow</div>
+    <h1 class="auth-title">You're invited!</h1>
+    <p style="color:#6B7280;margin-bottom:24px">
+        Join <strong>{{ org.name }}</strong> as a <strong>{{ role }}</strong>.
+    </p>
+
+    {% if error %}
+    <div class="auth-error">{{ error }}</div>
+    {% endif %}
+
+    {% if existing_user %}
+        <p>You already have a SprintFlow account with <strong>{{ email }}</strong>.</p>
+        <p style="color:#6B7280;font-size:14px;margin-bottom:24px">
+            Click below to join {{ org.name }}.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary">Accept & Join {{ org.name }} →</button>
+        </form>
+    {% else %}
+        <p style="color:#6B7280;font-size:14px;margin-bottom:16px">
+            Create your account to join <strong>{{ org.name }}</strong>.
+            Your email is <strong>{{ email }}</strong>.
+        </p>
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-row">
+                <div class="form-group">
+                    <label>First Name</label>
+                    <input type="text" name="first_name" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label>Last Name</label>
+                    <input type="text" name="last_name" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" required minlength="8">
+            </div>
+            <div class="form-group">
+                <label>Confirm Password</label>
+                <input type="password" name="password2" required>
+            </div>
+            <button type="submit" class="btn-primary">Create Account & Join →</button>
+        </form>
+    {% endif %}
+
+    <p class="auth-footer">
+        Not you? <a href="{% url 'user_login' %}">Log in with a different account</a>
+    </p>
+</div>
+{% endblock %}
