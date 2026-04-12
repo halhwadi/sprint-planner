@@ -8,6 +8,11 @@ from .models import (
     Organization, OrganizationMember, Stream,
     Sprint, SprintMember, UserStory, Vote, StreamAssignment
 )
+from .permissions import (
+    require_org_member, require_scrum_master, require_admin,
+    require_voter, require_scrum_master_api, require_admin_api,
+    require_voter_api, is_scrum_master_or_above
+)
 
 BANDWIDTH_LIMIT = 8
 
@@ -17,8 +22,6 @@ BANDWIDTH_LIMIT = 8
 # ─────────────────────────────────────────
 
 def get_org(request):
-    """Get the organization for the current user. Task 2 will replace this
-    with proper multi-org support tied to auth."""
     membership = OrganizationMember.objects.select_related('organization').filter(
         user=request.user
     ).first()
@@ -26,59 +29,29 @@ def get_org(request):
 
 
 def get_member(request, org):
-    """Get SprintMember for current user in current org."""
     try:
         return SprintMember.objects.get(user=request.user, organization=org, is_active=True)
     except SprintMember.DoesNotExist:
         return None
 
 
-def is_sm(request, org):
-    """Check if current user is Scrum Master or Admin in this org."""
-    try:
-        m = OrganizationMember.objects.get(user=request.user, organization=org)
-        return m.is_scrum_master()
-    except OrganizationMember.DoesNotExist:
-        return False
-
-
 # ─────────────────────────────────────────
-# PUBLIC VIEWS
+# PUBLIC
 # ─────────────────────────────────────────
 
 def home(request):
     return redirect('board')
 
 
-def sm_login(request):
-    error = ''
-    if request.method == 'POST':
-        user = authenticate(request, username=request.POST['username'], password=request.POST['password'])
-        if user:
-            login(request, user)
-            return redirect('sm_panel')
-        error = 'Invalid credentials.'
-    return render(request, 'planner/login.html', {'error': error})
-
-
-def sm_logout(request):
-    logout(request)
-    return redirect('sm_login')
-
-
 # ─────────────────────────────────────────
-# MEMBER VIEWS
+# BOARD
 # ─────────────────────────────────────────
 
-@login_required
+@require_org_member
 def board(request):
-    org = get_org(request)
-    if not org:
-        return redirect('sm_login')
-
-    user_is_sm = is_sm(request, org)
-    member     = get_member(request, org)
-
+    org           = get_org(request)
+    user_is_sm    = is_scrum_master_or_above(request.user, org)
+    member        = get_member(request, org)
     sprints       = Sprint.objects.filter(organization=org)
     active_sprint = sprints.filter(is_active=True).first()
     streams       = Stream.objects.filter(organization=org)
@@ -90,13 +63,16 @@ def board(request):
     elif active_sprint:
         selected_sprint = active_sprint
 
-    stories_qs = UserStory.objects.filter(organization=org).prefetch_related(
+    stories = UserStory.objects.filter(organization=org).prefetch_related(
         'votes', 'stream_assignments', 'stream_assignments__member'
     ).select_related('owner', 'sprint')
 
-    stories = stories_qs.filter(sprint=selected_sprint) if selected_sprint else stories_qs.all()
+    if selected_sprint:
+        stories = stories.filter(sprint=selected_sprint)
 
-    all_members = SprintMember.objects.filter(organization=org, is_active=True).select_related('user', 'stream')
+    all_members = SprintMember.objects.filter(
+        organization=org, is_active=True
+    ).select_related('user', 'stream')
 
     bandwidth = []
     for m in all_members:
@@ -117,16 +93,21 @@ def board(request):
     })
 
 
-@login_required
-def vote_room(request, us_id):
-    org   = get_org(request)
-    story = get_object_or_404(UserStory, id=us_id, organization=org)
+# ─────────────────────────────────────────
+# VOTE ROOM
+# ─────────────────────────────────────────
 
-    user_is_sm  = is_sm(request, org)
-    member      = get_member(request, org)
-    all_members = SprintMember.objects.filter(organization=org, is_active=True).select_related('user', 'stream')
-    fibonacci   = [1, 2, 3, 5, 8, 13]
-    streams     = Stream.objects.filter(organization=org)
+@require_org_member
+def vote_room(request, us_id):
+    org        = get_org(request)
+    story      = get_object_or_404(UserStory, id=us_id, organization=org)
+    user_is_sm = is_scrum_master_or_above(request.user, org)
+    member     = get_member(request, org)
+    streams    = Stream.objects.filter(organization=org)
+    all_members = SprintMember.objects.filter(
+        organization=org, is_active=True
+    ).select_related('user', 'stream')
+    fibonacci  = [1, 2, 3, 5, 8, 13]
 
     my_vote = None
     if member:
@@ -148,8 +129,10 @@ def vote_room(request, us_id):
 
 def vote_status(request, us_id):
     story       = get_object_or_404(UserStory, id=us_id)
-    all_members = SprintMember.objects.filter(organization=story.organization, is_active=True).select_related('user')
-    votes       = {v.member_id: v.points for v in story.votes.all()}
+    all_members = SprintMember.objects.filter(
+        organization=story.organization, is_active=True
+    ).select_related('user')
+    votes = {v.member_id: v.points for v in story.votes.all()}
 
     members_status = []
     for m in all_members:
@@ -187,11 +170,14 @@ def vote_status(request, us_id):
 
 
 @require_POST
+@require_voter_api
 def submit_vote(request, us_id):
-    story     = get_object_or_404(UserStory, id=us_id)
-    member_id = request.session.get('member_id')
-    if not member_id:
-        return JsonResponse({'error': 'Not identified'}, status=403)
+    org    = get_org(request)
+    story  = get_object_or_404(UserStory, id=us_id, organization=org)
+    member = get_member(request, org)
+
+    if not member:
+        return JsonResponse({'error': 'You are not a sprint member'}, status=403)
     if story.voting_status != 'voting':
         return JsonResponse({'error': 'Voting not open'}, status=400)
 
@@ -200,23 +186,23 @@ def submit_vote(request, us_id):
     if points not in [1, 2, 3, 5, 8, 13]:
         return JsonResponse({'error': 'Invalid points'}, status=400)
 
-    member = get_object_or_404(SprintMember, id=member_id)
-    Vote.objects.update_or_create(user_story=story, member=member, defaults={'points': points})
+    Vote.objects.update_or_create(
+        user_story=story, member=member, defaults={'points': points}
+    )
     return JsonResponse({'ok': True})
 
 
 # ─────────────────────────────────────────
-# SM VIEWS
+# SM PANEL
 # ─────────────────────────────────────────
 
-@login_required
+@require_scrum_master
 def sm_panel(request):
-    org = get_org(request)
-    if not org or not is_sm(request, org):
-        return redirect('board')
-
+    org           = get_org(request)
     active_sprint = Sprint.objects.filter(organization=org, is_active=True).first()
-    all_members   = SprintMember.objects.filter(organization=org, is_active=True).select_related('user', 'stream')
+    all_members   = SprintMember.objects.filter(
+        organization=org, is_active=True
+    ).select_related('user', 'stream')
     streams       = Stream.objects.filter(organization=org)
 
     bandwidth = []
@@ -226,7 +212,9 @@ def sm_panel(request):
 
     return render(request, 'planner/sm_panel.html', {
         'members':       all_members,
-        'stories':       UserStory.objects.filter(organization=org).select_related('owner', 'sprint').prefetch_related('stream_assignments__member'),
+        'stories':       UserStory.objects.filter(organization=org).select_related(
+                             'owner', 'sprint'
+                         ).prefetch_related('stream_assignments__member'),
         'streams':       streams,
         'all_members':   all_members,
         'bandwidth':     bandwidth,
@@ -237,28 +225,44 @@ def sm_panel(request):
     })
 
 
-@login_required
-@require_POST
-def add_member(request):
-    org = get_org(request)
-    if not org or not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
+# ─────────────────────────────────────────
+# MEMBER MANAGEMENT
+# ─────────────────────────────────────────
 
-    from django.contrib.auth.models import User
-    data       = json.loads(request.body)
-    username   = data.get('username', '').strip()
-    stream_id  = data.get('stream_id')
-    role       = data.get('role', 'voter')
+@require_POST
+@require_scrum_master_api
+def add_member(request):
+    from django.contrib.auth.models import User as AuthUser
+    org       = get_org(request)
+    data      = json.loads(request.body)
+    username  = data.get('username', '').strip()
+    stream_id = data.get('stream_id')
+    role      = data.get('role', 'voter')
+
+    if role not in ('admin', 'scrum_master', 'voter', 'viewer'):
+        return JsonResponse({'error': 'Invalid role'}, status=400)
+
+    # Only admins can assign admin role
+    from .permissions import is_admin
+    if role == 'admin' and not is_admin(request.user, org):
+        return JsonResponse({'error': 'Only admins can assign admin role'}, status=403)
 
     try:
-        user = User.objects.get(username=username)
-    except User.DoesNotExist:
+        user = AuthUser.objects.get(username=username)
+    except AuthUser.DoesNotExist:
         return JsonResponse({'error': f'User "{username}" not found'}, status=400)
 
     stream = None
     if stream_id:
         stream = get_object_or_404(Stream, id=stream_id, organization=org)
 
+    # Add or update OrganizationMember
+    org_member, _ = OrganizationMember.objects.update_or_create(
+        organization=org, user=user,
+        defaults={'role': role}
+    )
+
+    # Add or update SprintMember
     member, created = SprintMember.objects.get_or_create(
         organization=org, user=user,
         defaults={'stream': stream, 'is_active': True}
@@ -268,27 +272,84 @@ def add_member(request):
         member.is_active = True
         member.save()
 
-    return JsonResponse({'ok': True, 'id': member.id, 'name': member.display_name()})
+    return JsonResponse({
+        'ok':   True,
+        'id':   member.id,
+        'name': member.display_name(),
+        'role': role,
+    })
 
 
-@login_required
 @require_POST
+@require_scrum_master_api
 def remove_member(request, member_id):
     org    = get_org(request)
     member = get_object_or_404(SprintMember, id=member_id, organization=org)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    # Prevent removing the last admin
+    from .permissions import is_admin
+    target_org_member = OrganizationMember.objects.filter(
+        organization=org, user=member.user
+    ).first()
+    if target_org_member and target_org_member.role == 'admin':
+        admin_count = OrganizationMember.objects.filter(
+            organization=org, role='admin'
+        ).count()
+        if admin_count <= 1:
+            return JsonResponse(
+                {'error': 'Cannot remove the last admin of the organization'},
+                status=400
+            )
+
     member.is_active = False
     member.save()
     return JsonResponse({'ok': True})
 
 
-@login_required
 @require_POST
+@require_scrum_master_api
+def change_member_role(request, member_id):
+    """Change a member's role. Only admins can assign/remove admin role."""
+    from .permissions import is_admin
+    org    = get_org(request)
+    member = get_object_or_404(SprintMember, id=member_id, organization=org)
+    data   = json.loads(request.body)
+    role   = data.get('role')
+
+    if role not in ('admin', 'scrum_master', 'voter', 'viewer'):
+        return JsonResponse({'error': 'Invalid role'}, status=400)
+
+    # Only admins can assign or remove admin role
+    target_org_member = get_object_or_404(
+        OrganizationMember, organization=org, user=member.user
+    )
+    if (role == 'admin' or target_org_member.role == 'admin') and not is_admin(request.user, org):
+        return JsonResponse({'error': 'Only admins can change admin role'}, status=403)
+
+    # Prevent removing last admin
+    if target_org_member.role == 'admin' and role != 'admin':
+        admin_count = OrganizationMember.objects.filter(
+            organization=org, role='admin'
+        ).count()
+        if admin_count <= 1:
+            return JsonResponse(
+                {'error': 'Cannot remove the last admin of the organization'},
+                status=400
+            )
+
+    target_org_member.role = role
+    target_org_member.save()
+    return JsonResponse({'ok': True, 'role': role})
+
+
+# ─────────────────────────────────────────
+# STREAM MANAGEMENT
+# ─────────────────────────────────────────
+
+@require_POST
+@require_admin_api
 def add_stream(request):
-    org = get_org(request)
-    if not org or not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
+    org  = get_org(request)
     data = json.loads(request.body)
     name = data.get('name', '').strip()
     if not name:
@@ -297,14 +358,25 @@ def add_stream(request):
     return JsonResponse({'ok': True, 'id': stream.id, 'name': stream.name})
 
 
-@login_required
 @require_POST
+@require_admin_api
+def delete_stream(request, stream_id):
+    org    = get_org(request)
+    stream = get_object_or_404(Stream, id=stream_id, organization=org)
+    stream.delete()
+    return JsonResponse({'ok': True})
+
+
+# ─────────────────────────────────────────
+# SPRINT MANAGEMENT
+# ─────────────────────────────────────────
+
+@require_POST
+@require_scrum_master_api
 def add_sprint(request):
-    org = get_org(request)
-    if not org or not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
-    data   = json.loads(request.body)
-    name   = data.get('name', '').strip()
+    org  = get_org(request)
+    data = json.loads(request.body)
+    name = data.get('name', '').strip()
     if not name:
         return JsonResponse({'error': 'Sprint name required'}, status=400)
     sprint = Sprint.objects.create(
@@ -320,17 +392,18 @@ def add_sprint(request):
     return JsonResponse({'ok': True, 'id': sprint.id, 'name': sprint.name})
 
 
-@login_required
 @require_POST
+@require_scrum_master_api
 def edit_sprint(request, sprint_id):
     org    = get_org(request)
     sprint = get_object_or_404(Sprint, id=sprint_id, organization=org)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
-    data = json.loads(request.body)
-    for field in ['name', 'goal', 'start_date', 'end_date']:
+    data   = json.loads(request.body)
+    for field in ['name', 'goal']:
         if field in data:
-            setattr(sprint, field, data[field] or None if 'date' in field else data[field])
+            setattr(sprint, field, data[field])
+    for field in ['start_date', 'end_date']:
+        if field in data:
+            setattr(sprint, field, data[field] or None)
     if 'is_active' in data:
         sprint.is_active = data['is_active']
         if sprint.is_active:
@@ -339,23 +412,23 @@ def edit_sprint(request, sprint_id):
     return JsonResponse({'ok': True})
 
 
-@login_required
 @require_POST
+@require_scrum_master_api
 def delete_sprint(request, sprint_id):
     org    = get_org(request)
     sprint = get_object_or_404(Sprint, id=sprint_id, organization=org)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
     sprint.delete()
     return JsonResponse({'ok': True})
 
 
-@login_required
+# ─────────────────────────────────────────
+# STORY MANAGEMENT
+# ─────────────────────────────────────────
+
 @require_POST
+@require_scrum_master_api
 def add_story(request):
-    org = get_org(request)
-    if not org or not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
+    org   = get_org(request)
     data  = json.loads(request.body)
     title = data.get('title', '').strip()
     if not title:
@@ -363,81 +436,77 @@ def add_story(request):
     owner  = get_object_or_404(SprintMember, id=data['owner_id'], organization=org) if data.get('owner_id') else None
     sprint = get_object_or_404(Sprint, id=data['sprint_id'], organization=org) if data.get('sprint_id') else None
     story  = UserStory.objects.create(
-        organization=org, title=title,
+        organization=org,
+        title=title,
         description=data.get('description', ''),
-        owner=owner, sprint=sprint,
+        owner=owner,
+        sprint=sprint,
         involved_streams=data.get('involved_streams', []),
         order=UserStory.objects.filter(organization=org).count()
     )
     return JsonResponse({'ok': True, 'id': story.id})
 
 
-@login_required
 @require_POST
+@require_scrum_master_api
 def edit_story(request, us_id):
     org   = get_org(request)
     story = get_object_or_404(UserStory, id=us_id, organization=org)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
-    data = json.loads(request.body)
+    data  = json.loads(request.body)
     if 'title'            in data: story.title            = data['title']
     if 'description'      in data: story.description      = data['description']
     if 'involved_streams' in data: story.involved_streams = data['involved_streams']
     if 'final_sp'         in data: story.final_sp         = data['final_sp']
     if 'owner_id'         in data:
-        story.owner = get_object_or_404(SprintMember, id=data['owner_id'], organization=org) if data['owner_id'] else None
+        story.owner = get_object_or_404(
+            SprintMember, id=data['owner_id'], organization=org
+        ) if data['owner_id'] else None
     if 'sprint_id'        in data:
-        story.sprint = get_object_or_404(Sprint, id=data['sprint_id'], organization=org) if data['sprint_id'] else None
+        story.sprint = get_object_or_404(
+            Sprint, id=data['sprint_id'], organization=org
+        ) if data['sprint_id'] else None
     story.save()
     return JsonResponse({'ok': True})
 
 
-@login_required
 @require_POST
+@require_scrum_master_api
 def delete_story(request, us_id):
     org   = get_org(request)
     story = get_object_or_404(UserStory, id=us_id, organization=org)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
     story.delete()
     return JsonResponse({'ok': True})
 
 
-@login_required
 @require_POST
+@require_scrum_master_api
 def trigger_voting(request, us_id):
     org   = get_org(request)
     story = get_object_or_404(UserStory, id=us_id, organization=org)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
     story.voting_status = 'voting'
     story.votes.all().delete()
-    story.vote_average = None
+    story.vote_average  = None
     story.save()
     return JsonResponse({'ok': True})
 
 
-@login_required
 @require_POST
+@require_scrum_master_api
 def close_voting(request, us_id):
     org   = get_org(request)
     story = get_object_or_404(UserStory, id=us_id, organization=org)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
     story.voting_status = 'closed'
     story.vote_average  = story.compute_average()
     story.save()
     return JsonResponse({'ok': True, 'average': story.vote_average})
 
 
-@login_required
 @require_POST
+@require_scrum_master_api
 def assign_sp(request, us_id):
     org   = get_org(request)
     story = get_object_or_404(UserStory, id=us_id, organization=org)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
-    data = json.loads(request.body)
+    data  = json.loads(request.body)
     if 'final_sp' in data:
         story.final_sp = data['final_sp']
         story.save()
@@ -446,16 +515,16 @@ def assign_sp(request, us_id):
         for sa in data['stream_assignments']:
             member = get_object_or_404(SprintMember, id=sa['member_id'], organization=org)
             stream = get_object_or_404(Stream, id=sa['stream_id'], organization=org)
-            StreamAssignment.objects.create(user_story=story, stream=stream, member=member, sp=sa['sp'])
+            StreamAssignment.objects.create(
+                user_story=story, stream=stream, member=member, sp=sa['sp']
+            )
     return JsonResponse({'ok': True})
 
 
-@login_required
 @require_POST
+@require_scrum_master_api
 def edit_stream_assignment(request, us_id):
     org  = get_org(request)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
     data = json.loads(request.body)
     sa   = get_object_or_404(StreamAssignment, id=data['assignment_id'])
     sa.sp = data['sp']
@@ -476,33 +545,37 @@ def get_story_detail(request, us_id):
             'sp':          sa.sp,
         })
     return JsonResponse({
-        'id':              story.id,
-        'title':           story.title,
-        'description':     story.description,
-        'owner_id':        story.owner_id,
-        'owner_name':      story.owner.display_name() if story.owner else None,
-        'involved_streams': story.involved_streams,
-        'final_sp':        story.final_sp,
-        'voting_status':   story.voting_status,
-        'vote_average':    story.vote_average,
-        'sprint_id':       story.sprint_id,
+        'id':                story.id,
+        'title':             story.title,
+        'description':       story.description,
+        'owner_id':          story.owner_id,
+        'owner_name':        story.owner.display_name() if story.owner else None,
+        'involved_streams':  story.involved_streams,
+        'final_sp':          story.final_sp,
+        'voting_status':     story.voting_status,
+        'vote_average':      story.vote_average,
+        'sprint_id':         story.sprint_id,
         'stream_assignments': assignments,
     })
 
 
-@login_required
+# ─────────────────────────────────────────
+# EXPORT / IMPORT
+# ─────────────────────────────────────────
+
+@require_scrum_master
 def export_sprint(request, sprint_id):
     org    = get_org(request)
     sprint = get_object_or_404(Sprint, id=sprint_id, organization=org)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
 
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from django.http import HttpResponse
 
     stories = UserStory.objects.filter(sprint=sprint).prefetch_related(
-        'stream_assignments__member', 'stream_assignments__stream', 'votes__member'
+        'stream_assignments__member',
+        'stream_assignments__stream',
+        'votes__member'
     ).select_related('owner')
 
     wb  = openpyxl.Workbook()
@@ -513,18 +586,20 @@ def export_sprint(request, sprint_id):
     header_font = Font(bold=True, color='FFFFFF', size=11)
     alt_fill    = PatternFill('solid', fgColor='F1F0FF')
     border      = Border(
-        left=Side(style='thin', color='CCCCCC'), right=Side(style='thin', color='CCCCCC'),
-        top=Side(style='thin', color='CCCCCC'),  bottom=Side(style='thin', color='CCCCCC'),
+        left=Side(style='thin', color='CCCCCC'),
+        right=Side(style='thin', color='CCCCCC'),
+        top=Side(style='thin', color='CCCCCC'),
+        bottom=Side(style='thin', color='CCCCCC'),
     )
 
-    headers = ['#', 'User Story', 'Description', 'Owner', 'Owner Stream',
-               'Involved Streams', 'Vote Average', 'Final SP', 'Voting Status']
+    headers    = ['#', 'User Story', 'Description', 'Owner', 'Owner Stream',
+                  'Involved Streams', 'Vote Average', 'Final SP', 'Voting Status']
     col_widths = [5, 45, 35, 20, 14, 30, 14, 10, 16]
     for i, w in enumerate(col_widths, 1):
         ws1.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
 
     ws1.merge_cells('A1:I1')
-    ws1['A1'] = f'Sprint: {sprint.name}'
+    ws1['A1']           = f'Sprint: {sprint.name}'
     ws1['A1'].font      = Font(bold=True, size=13, color='1E1B4B')
     ws1['A1'].fill      = PatternFill('solid', fgColor='EEF2FF')
     ws1['A1'].alignment = Alignment(horizontal='center', vertical='center')
@@ -532,11 +607,11 @@ def export_sprint(request, sprint_id):
 
     header_row = 3
     for col, h in enumerate(headers, 1):
-        cell            = ws1.cell(row=header_row, column=col, value=h)
-        cell.font       = header_font
-        cell.fill       = header_fill
-        cell.alignment  = Alignment(horizontal='center', vertical='center', wrap_text=True)
-        cell.border     = border
+        cell           = ws1.cell(row=header_row, column=col, value=h)
+        cell.font      = header_font
+        cell.fill      = header_fill
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border    = border
 
     for i, story in enumerate(stories, 1):
         row  = header_row + i
@@ -546,7 +621,8 @@ def export_sprint(request, sprint_id):
             story.owner.display_name() if story.owner else '—',
             story.owner.stream.name if story.owner and story.owner.stream else '—',
             ', '.join(story.involved_streams) if story.involved_streams else '—',
-            story.vote_average or '—', story.final_sp or '—',
+            story.vote_average or '—',
+            story.final_sp or '—',
             story.get_voting_status_display(),
         ]
         for col, val in enumerate(vals, 1):
@@ -556,23 +632,27 @@ def export_sprint(request, sprint_id):
             if fill:
                 cell.fill = fill
 
-    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition'] = f'attachment; filename="{sprint.name.replace(" ", "_")}_export.xlsx"'
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = (
+        f'attachment; filename="{sprint.name.replace(" ", "_")}_export.xlsx"'
+    )
     wb.save(response)
     return response
 
 
-@login_required
+@require_scrum_master
 def import_stories(request, sprint_id):
     org    = get_org(request)
     sprint = get_object_or_404(Sprint, id=sprint_id, organization=org)
-    if not is_sm(request, org):
-        return JsonResponse({'error': 'Forbidden'}, status=403)
 
     if request.method == 'GET':
         return render(request, 'planner/import_stories.html', {
             'sprint':  sprint,
-            'members': SprintMember.objects.filter(organization=org, is_active=True).select_related('user', 'stream'),
+            'members': SprintMember.objects.filter(
+                organization=org, is_active=True
+            ).select_related('user', 'stream'),
             'streams': Stream.objects.filter(organization=org),
         })
 
@@ -586,7 +666,10 @@ def import_stories(request, sprint_id):
     try:
         wb      = openpyxl.load_workbook(BytesIO(excel_file.read()), data_only=True)
         ws      = wb.active
-        headers = [str(cell.value).strip().lower() if cell.value else '' for cell in ws[1]]
+        headers = [
+            str(cell.value).strip().lower() if cell.value else ''
+            for cell in ws[1]
+        ]
 
         def find_col(candidates):
             for c in candidates:
@@ -615,13 +698,24 @@ def import_stories(request, sprint_id):
                 except (ValueError, TypeError):
                     pass
             UserStory.objects.create(
-                organization=org, title=str(title).strip(),
-                description=str(row[col_description]).strip() if col_description and col_description < len(row) and row[col_description] else '',
-                sprint=sprint, final_sp=final_sp,
+                organization=org,
+                title=str(title).strip(),
+                description=(
+                    str(row[col_description]).strip()
+                    if col_description and col_description < len(row) and row[col_description]
+                    else ''
+                ),
+                sprint=sprint,
+                final_sp=final_sp,
                 order=UserStory.objects.filter(organization=org).count()
             )
             created += 1
 
-        return JsonResponse({'ok': True, 'created': created, 'skipped': skipped, 'sprint_name': sprint.name})
+        return JsonResponse({
+            'ok':          True,
+            'created':     created,
+            'skipped':     skipped,
+            'sprint_name': sprint.name,
+        })
     except Exception as e:
         return JsonResponse({'error': f'Failed to read file: {str(e)}'}, status=400)
