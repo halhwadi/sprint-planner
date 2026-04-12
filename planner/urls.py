@@ -24,7 +24,6 @@ urlpatterns = [
 
     # ── App ──
     path('board/', views.board, name='board'),
-    path('onboarding/', auth_views.onboarding, name='onboarding'),
     path('vote/<int:us_id>/', views.vote_room, name='vote_room'),
     path('vote/<int:us_id>/status/', views.vote_status, name='vote_status'),
     path('vote/<int:us_id>/submit/', views.submit_vote, name='submit_vote'),
@@ -33,7 +32,9 @@ urlpatterns = [
     path('sm/panel/', views.sm_panel, name='sm_panel'),
     path('sm/members/add/', views.add_member, name='add_member'),
     path('sm/members/<int:member_id>/remove/', views.remove_member, name='remove_member'),
+    path('sm/members/<int:member_id>/role/', views.change_member_role, name='change_member_role'),
     path('sm/streams/add/', views.add_stream, name='add_stream'),
+    path('sm/streams/<int:stream_id>/delete/', views.delete_stream, name='delete_stream'),
     path('sm/sprints/add/', views.add_sprint, name='add_sprint'),
     path('sm/sprints/<int:sprint_id>/edit/', views.edit_sprint, name='edit_sprint'),
     path('sm/sprints/<int:sprint_id>/delete/', views.delete_sprint, name='delete_sprint'),
