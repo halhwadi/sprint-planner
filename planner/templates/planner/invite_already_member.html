@@ -1,0 +1,11 @@
+{% extends "planner/base_auth.html" %}
+{% block title %}Already a Member — SprintFlow{% endblock %}
+{% block content %}
+<div class="auth-box" style="text-align:center">
+    <div style="font-size:48px">✅</div>
+    <h1 class="auth-title">You're already a member</h1>
+    <p>You already belong to <strong>{{ org.name }}</strong>.</p>
+    <a href="{% url 'user_login' %}" class="btn-primary"
+       style="display:inline-block;margin-top:16px">Go to Login</a>
+</div>
+{% endblock %}
