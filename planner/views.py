@@ -22,6 +22,17 @@ BANDWIDTH_LIMIT = 8
 # ─────────────────────────────────────────
 
 def get_org(request):
+    """Get active org for current user.
+    If user belongs to multiple orgs, respects session selection."""
+    active_org_id = request.session.get('active_org_id')
+    if active_org_id:
+        membership = OrganizationMember.objects.select_related('organization').filter(
+            user=request.user, organization_id=active_org_id
+        ).first()
+        if membership:
+            return membership.organization
+
+    # Default — first org
     membership = OrganizationMember.objects.select_related('organization').filter(
         user=request.user
     ).first()
