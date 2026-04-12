@@ -60,3 +60,26 @@ def send_password_reset_email(user, token):
         </div>
         """
     )
+
+def send_invite_email(invited_by, invite_token, organization):
+    url = f"{settings.APP_URL}/invite/{invite_token.token}/"
+    send_email(
+        to=invite_token.email,
+        subject=f"You're invited to join {organization.name} on SprintFlow",
+        html=f"""
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+            <h2 style="color:#4F46E5">You've been invited! 🎉</h2>
+            <p>Hi there,</p>
+            <p><strong>{invited_by.get_full_name() or invited_by.username}</strong> has invited you
+            to join <strong>{organization.name}</strong> on SprintFlow as a
+            <strong>{invite_token.get_role_display()}</strong>.</p>
+            <a href="{url}" style="display:inline-block;background:#4F46E5;color:white;
+               padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin:16px 0">
+               Accept Invitation
+            </a>
+            <p style="color:#888;font-size:13px;margin-top:24px">
+                This invitation expires in 7 days. If you weren't expecting this, ignore this email.
+            </p>
+        </div>
+        """
+    )
