@@ -1,0 +1,31 @@
+{% extends "planner/base_auth.html" %}
+{% block title %}Select Workspace — SprintFlow{% endblock %}
+{% block content %}
+<div class="auth-box">
+    <div class="auth-logo">⚡ SprintFlow</div>
+    <h1 class="auth-title">Select workspace</h1>
+    <p style="color:#6B7280;margin-bottom:24px">
+        You belong to multiple organizations. Which one would you like to enter?
+    </p>
+
+    <form method="post">
+        {% csrf_token %}
+        <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px">
+            {% for m in memberships %}
+            <button type="submit" name="org_id" value="{{ m.organization.id }}"
+                style="background:white;border:2px solid #E5E7EB;border-radius:8px;
+                       padding:16px;text-align:left;cursor:pointer;transition:border-color 0.2s"
+                onmouseover="this.style.borderColor='#4F46E5'"
+                onmouseout="this.style.borderColor='#E5E7EB'">
+                <div style="font-weight:700;color:#1E1B4B;font-size:16px">
+                    {{ m.organization.name }}
+                </div>
+                <div style="color:#6B7280;font-size:13px;margin-top:4px">
+                    {{ m.get_role_display }}
+                </div>
+            </button>
+            {% endfor %}
+        </div>
+    </form>
+</div>
+{% endblock %}
