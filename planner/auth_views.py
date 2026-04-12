@@ -154,6 +154,12 @@ def user_login(request):
                     error = 'Please verify your email before logging in.'
                 else:
                     login(request, user)
+                    # Check how many orgs this user belongs to
+                    orgs = OrganizationMember.objects.filter(
+                        user=user
+                    ).select_related('organization')
+                    if orgs.count() > 1:
+                        return redirect('select_org')
                     return redirect('sm_panel')
             else:
                 error = 'Invalid email or password.'
@@ -161,6 +167,28 @@ def user_login(request):
             error = 'Invalid email or password.'
 
     return render(request, 'planner/login.html', {'error': error})
+
+@login_required
+def select_org(request):
+    """Show org selector when user belongs to multiple orgs."""
+    memberships = OrganizationMember.objects.filter(
+        user=request.user
+    ).select_related('organization')
+
+    if memberships.count() == 1:
+        return redirect('sm_panel')
+
+    if request.method == 'POST':
+        org_id = request.POST.get('org_id')
+        # Store selected org in session
+        membership = memberships.filter(organization_id=org_id).first()
+        if membership:
+            request.session['active_org_id'] = int(org_id)
+            return redirect('sm_panel')
+
+    return render(request, 'planner/select_org.html', {
+        'memberships': memberships
+    })
 
 
 def user_logout(request):
