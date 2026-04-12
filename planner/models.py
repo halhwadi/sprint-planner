@@ -1,7 +1,8 @@
+import uuid
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
-import uuid
+
 
 # ─────────────────────────────────────────
 # ORGANIZATION
@@ -110,11 +111,31 @@ class Stream(models.Model):
 
 
 # ─────────────────────────────────────────
+# TEAM
+# ─────────────────────────────────────────
+
+class Team(models.Model):
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='teams')
+    name         = models.CharField(max_length=100)
+    description  = models.TextField(blank=True)
+    created_by   = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_teams')
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('organization', 'name')
+        ordering        = ['name']
+
+    def __str__(self):
+        return f"{self.organization.name} / {self.name}"
+
+
+# ─────────────────────────────────────────
 # SPRINT MEMBER
 # ─────────────────────────────────────────
 
 class SprintMember(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='sprint_members')
+    team         = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name='members')
     user         = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sprint_memberships')
     stream       = models.ForeignKey(Stream, on_delete=models.SET_NULL, null=True, blank=True, related_name='members')
     is_active    = models.BooleanField(default=True)
@@ -149,6 +170,7 @@ class SprintMember(models.Model):
 
 class Sprint(models.Model):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='sprints')
+    team         = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name='sprints')
     name         = models.CharField(max_length=100)
     goal         = models.TextField(blank=True)
     start_date   = models.DateField(null=True, blank=True)
@@ -231,6 +253,9 @@ class StreamAssignment(models.Model):
         unique_together = ('user_story', 'stream', 'member')
 
 
+# ─────────────────────────────────────────
+# EMAIL VERIFICATION TOKEN
+# ─────────────────────────────────────────
 
 class EmailVerificationToken(models.Model):
     user       = models.OneToOneField(User, on_delete=models.CASCADE, related_name='verification_token')
@@ -238,10 +263,13 @@ class EmailVerificationToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def is_expired(self):
-        from django.utils import timezone
         from datetime import timedelta
         return timezone.now() > self.created_at + timedelta(hours=24)
 
+
+# ─────────────────────────────────────────
+# PASSWORD RESET TOKEN
+# ─────────────────────────────────────────
 
 class PasswordResetToken(models.Model):
     user       = models.OneToOneField(User, on_delete=models.CASCADE, related_name='password_reset_token')
@@ -249,6 +277,36 @@ class PasswordResetToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def is_expired(self):
-        from django.utils import timezone
         from datetime import timedelta
         return timezone.now() > self.created_at + timedelta(hours=1)
+
+
+# ─────────────────────────────────────────
+# INVITE TOKEN
+# ─────────────────────────────────────────
+
+class InviteToken(models.Model):
+    STATUS_CHOICES = [
+        ('pending',  'Pending'),
+        ('accepted', 'Accepted'),
+        ('expired',  'Expired'),
+    ]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='invites')
+    invited_by   = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_invites')
+    email        = models.EmailField()
+    role         = models.CharField(max_length=20, choices=OrganizationMember.ROLE_CHOICES, default='voter')
+    team         = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name='invites')
+    token        = models.UUIDField(default=uuid.uuid4, unique=True)
+    status       = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('organization', 'email')
+
+    def is_expired(self):
+        from datetime import timedelta
+        return timezone.now() > self.created_at + timedelta(days=7)
+
+    def __str__(self):
+        return f"Invite to {self.email} @ {self.organization.name}"
