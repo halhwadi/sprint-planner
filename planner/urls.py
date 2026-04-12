@@ -22,6 +22,15 @@ urlpatterns = [
     path('sm/pick-member/', RedirectView.as_view(pattern_name='sm_panel'), name='sm_pick_member'),
     path('sm/logout/', RedirectView.as_view(pattern_name='user_logout'), name='sm_logout'),
 
+    # In auth section
+    path('select-org/', auth_views.select_org, name='select_org'),
+    
+    # In invites section
+    path('invite/<uuid:token>/', invite_views.accept_invite, name='accept_invite'),
+    path('sm/invites/', invite_views.list_invites, name='list_invites'),
+    path('sm/invites/send/', invite_views.send_invite, name='send_invite'),
+    path('sm/invites/<int:invite_id>/cancel/', invite_views.cancel_invite, name='cancel_invite'),
+
     # ── App ──
     path('board/', views.board, name='board'),
     path('vote/<int:us_id>/', views.vote_room, name='vote_room'),
