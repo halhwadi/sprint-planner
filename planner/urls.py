@@ -17,7 +17,10 @@ urlpatterns = [
     path('password-reset/done/', auth_views.password_reset_done, name='password_reset_done'),
 
     # ── Legacy redirects ──
-    path('', RedirectView.as_view(pattern_name='user_login'), name='home'),
+    path('', views.landing, name='home'),
+    path('privacy-policy/', views.privacy_policy, name='privacy_policy'),
+    path('terms-of-service/', views.terms_of_service, name='terms_of_service'),
+    path('refund-policy/', views.refund_policy, name='refund_policy'),
     path('join/', RedirectView.as_view(pattern_name='user_login'), name='join'),
     path('sm_login/', RedirectView.as_view(pattern_name='user_login'), name='sm_login'),
     path('sm/pick-member/', RedirectView.as_view(pattern_name='sm_panel'), name='sm_pick_member'),
