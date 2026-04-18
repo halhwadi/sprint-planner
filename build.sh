@@ -25,22 +25,30 @@ else:
 
 if not Organization.objects.exists():
     org = Organization.objects.create(
-        name='SprintFlow',
-        slug='sprintflow',
+        name='SprintFlow Test',
+        slug='sprintflow-test',
         owner=user,
+        is_test=True,
     )
     Subscription.objects.create(
         organization=org,
-        plan='pro',
-        status='trialing',
-        trial_end=timezone.now() + timedelta(days=14),
+        plan='business',
+        status='active',
+        trial_end=timezone.now() + timedelta(days=36500),
     )
     OrganizationMember.objects.create(
         organization=org,
         user=user,
         role='admin',
     )
-    print('Default organization created')
+    print('Test organization created')
 else:
-    print('Organization already exists')
+    # Ensure existing org is flagged as test
+    org = Organization.objects.first()
+    if not org.is_test:
+        org.is_test = True
+        org.save()
+        print('Org flagged as test')
+    else:
+        print('Organization already exists')
 "
