@@ -43,7 +43,6 @@ if not Organization.objects.exists():
     )
     print('Test organization created')
 else:
-    # Ensure existing org is flagged as test
     org = Organization.objects.first()
     if not org.is_test:
         org.is_test = True
