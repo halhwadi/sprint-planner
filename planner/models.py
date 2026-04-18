@@ -12,6 +12,7 @@ class Organization(models.Model):
     name       = models.CharField(max_length=200)
     slug       = models.SlugField(max_length=200, unique=True)
     owner      = models.ForeignKey(User, on_delete=models.PROTECT, related_name='owned_orgs')
+    is_test    = models.BooleanField(default=False)  # test accounts bypass billing
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -41,12 +42,16 @@ class Subscription(models.Model):
     trial_end              = models.DateTimeField()
     paddle_customer_id     = models.CharField(max_length=200, blank=True)
     paddle_subscription_id = models.CharField(max_length=200, blank=True)
+    ai_calls_used          = models.PositiveIntegerField(default=0)  # resets monthly
+    ai_calls_reset_at      = models.DateTimeField(default=timezone.now)
     updated_at             = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.organization.name} — {self.plan} ({self.status})"
 
     def is_active(self):
+        if self.organization.is_test:
+            return True
         if self.status == 'trialing':
             return timezone.now() < self.trial_end
         return self.status == 'active'
@@ -58,6 +63,25 @@ class Subscription(models.Model):
         if self.status != 'trialing':
             return 0
         return max(0, (self.trial_end - timezone.now()).days)
+
+    def ai_calls_limit(self):
+        """Monthly AI call limit per plan. 0 = not available."""
+        limits = {'starter': 0, 'pro': 0, 'business': 500}
+        if self.organization.is_test:
+            return 99999
+        return limits.get(self.plan, 0)
+
+    def ai_calls_remaining(self):
+        # Reset counter if new month
+        from datetime import timedelta
+        if timezone.now() > self.ai_calls_reset_at + timedelta(days=30):
+            self.ai_calls_used = 0
+            self.ai_calls_reset_at = timezone.now()
+            self.save(update_fields=['ai_calls_used', 'ai_calls_reset_at'])
+        return max(0, self.ai_calls_limit() - self.ai_calls_used)
+
+    def can_use_ai(self):
+        return self.ai_calls_remaining() > 0
 
 
 # ─────────────────────────────────────────
@@ -165,6 +189,34 @@ class SprintMember(models.Model):
 
 
 # ─────────────────────────────────────────
+# TAG
+# ─────────────────────────────────────────
+
+class Tag(models.Model):
+    COLOR_CHOICES = [
+        ('indigo', 'Indigo'),
+        ('violet', 'Violet'),
+        ('green',  'Green'),
+        ('amber',  'Amber'),
+        ('red',    'Red'),
+        ('blue',   'Blue'),
+        ('pink',   'Pink'),
+        ('gray',   'Gray'),
+    ]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='tags')
+    name         = models.CharField(max_length=50)
+    color        = models.CharField(max_length=20, choices=COLOR_CHOICES, default='indigo')
+
+    class Meta:
+        unique_together = ('organization', 'name')
+        ordering        = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+# ─────────────────────────────────────────
 # SPRINT
 # ─────────────────────────────────────────
 
@@ -189,34 +241,114 @@ class Sprint(models.Model):
 
 
 # ─────────────────────────────────────────
+# EPIC
+# ─────────────────────────────────────────
+
+class Epic(models.Model):
+    STATUS_CHOICES = [
+        ('draft',       'Draft'),
+        ('in_progress', 'In Progress'),
+        ('done',        'Done'),
+        ('cancelled',   'Cancelled'),
+    ]
+    PRIORITY_CHOICES = [
+        ('critical', 'Critical'),
+        ('high',     'High'),
+        ('medium',   'Medium'),
+        ('low',      'Low'),
+    ]
+
+    organization      = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='epics')
+    team              = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name='epics')
+    title             = models.CharField(max_length=300)
+    description       = models.TextField(blank=True)
+    status            = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    priority          = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium')
+    owner             = models.ForeignKey(SprintMember, on_delete=models.SET_NULL, null=True, blank=True, related_name='owned_epics')
+    tags              = models.ManyToManyField(Tag, blank=True, related_name='epics')
+    status_changed_at = models.DateTimeField(null=True, blank=True)
+    created_at        = models.DateTimeField(auto_now_add=True)
+    updated_at        = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.title
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = Epic.objects.filter(pk=self.pk).values('status').first()
+            if old and old['status'] != self.status:
+                self.status_changed_at = timezone.now()
+        super().save(*args, **kwargs)
+
+
+# ─────────────────────────────────────────
 # USER STORY
 # ─────────────────────────────────────────
 
-US_STATUS = [
-    ('pending', 'Pending'),
-    ('voting',  'Voting Open'),
-    ('closed',  'Voting Closed'),
-]
-
-
 class UserStory(models.Model):
-    organization     = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='user_stories')
-    sprint           = models.ForeignKey(Sprint, null=True, blank=True, on_delete=models.SET_NULL, related_name='user_stories')
-    title            = models.CharField(max_length=300)
-    description      = models.TextField(blank=True)
-    owner            = models.ForeignKey(SprintMember, null=True, blank=True, on_delete=models.SET_NULL, related_name='owned_stories')
-    involved_streams = models.JSONField(default=list)
-    final_sp         = models.FloatField(null=True, blank=True)
-    voting_status    = models.CharField(max_length=20, choices=US_STATUS, default='pending')
-    vote_average     = models.FloatField(null=True, blank=True)
-    order            = models.PositiveIntegerField(default=0)
-    created_at       = models.DateTimeField(auto_now_add=True)
+    STATUS_CHOICES = [
+        ('draft',       'Draft'),
+        ('ready',       'Ready'),
+        ('pending',     'Pending Estimation'),
+        ('voting',      'Voting Open'),
+        ('estimated',   'Estimated'),
+        ('in_progress', 'In Progress'),
+        ('in_review',   'In Review'),
+        ('done',        'Done'),
+        ('cancelled',   'Cancelled'),
+    ]
+    PRIORITY_CHOICES = [
+        ('critical', 'Critical'),
+        ('high',     'High'),
+        ('medium',   'Medium'),
+        ('low',      'Low'),
+    ]
+
+    organization      = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='user_stories')
+    epic              = models.ForeignKey(Epic, on_delete=models.SET_NULL, null=True, blank=True, related_name='user_stories')
+    sprint            = models.ForeignKey(Sprint, null=True, blank=True, on_delete=models.SET_NULL, related_name='user_stories')
+    title             = models.CharField(max_length=300)
+    description       = models.TextField(blank=True)
+    owner             = models.ForeignKey(SprintMember, null=True, blank=True, on_delete=models.SET_NULL, related_name='owned_stories')
+    priority          = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium')
+    involved_streams  = models.JSONField(default=list)
+    final_sp          = models.FloatField(null=True, blank=True)
+    status            = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    # kept for backward compat with voting views — mirrors status for voting states
+    voting_status     = models.CharField(max_length=20, choices=[
+        ('pending', 'Pending'),
+        ('voting',  'Voting Open'),
+        ('closed',  'Voting Closed'),
+    ], default='pending')
+    vote_average      = models.FloatField(null=True, blank=True)
+    tags              = models.ManyToManyField(Tag, blank=True, related_name='user_stories')
+    order             = models.PositiveIntegerField(default=0)
+    status_changed_at = models.DateTimeField(null=True, blank=True)
+    created_at        = models.DateTimeField(auto_now_add=True)
+    updated_at        = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['order', 'created_at']
 
     def __str__(self):
         return self.title
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = UserStory.objects.filter(pk=self.pk).values('status').first()
+            if old and old['status'] != self.status:
+                self.status_changed_at = timezone.now()
+        # Keep voting_status in sync with status
+        if self.status == 'voting':
+            self.voting_status = 'voting'
+        elif self.status in ('estimated', 'in_progress', 'in_review', 'done'):
+            self.voting_status = 'closed'
+        else:
+            self.voting_status = 'pending'
+        super().save(*args, **kwargs)
 
     def compute_average(self):
         votes = self.votes.all()
@@ -251,6 +383,123 @@ class StreamAssignment(models.Model):
 
     class Meta:
         unique_together = ('user_story', 'stream', 'member')
+
+
+# ─────────────────────────────────────────
+# TASK
+# ─────────────────────────────────────────
+
+class Task(models.Model):
+    STATUS_CHOICES = [
+        ('todo',        'To Do'),
+        ('in_progress', 'In Progress'),
+        ('in_review',   'In Review'),
+        ('done',        'Done'),
+        ('blocked',     'Blocked'),
+        ('cancelled',   'Cancelled'),
+    ]
+    PRIORITY_CHOICES = [
+        ('critical', 'Critical'),
+        ('high',     'High'),
+        ('medium',   'Medium'),
+        ('low',      'Low'),
+    ]
+    TYPE_CHOICES = [
+        ('backend',  'Backend'),
+        ('frontend', 'Frontend'),
+        ('qa',       'QA'),
+        ('devops',   'DevOps'),
+        ('design',   'Design'),
+        ('other',    'Other'),
+    ]
+
+    organization      = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='tasks')
+    user_story        = models.ForeignKey(UserStory, on_delete=models.CASCADE, related_name='tasks')
+    title             = models.CharField(max_length=300)
+    description       = models.TextField(blank=True)
+    task_type         = models.CharField(max_length=20, choices=TYPE_CHOICES, default='other')
+    status            = models.CharField(max_length=20, choices=STATUS_CHOICES, default='todo')
+    priority          = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium')
+    assignee          = models.ForeignKey(SprintMember, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_tasks')
+    story_points      = models.FloatField(null=True, blank=True)
+    acceptance_criteria = models.TextField(blank=True)
+    is_ai_generated   = models.BooleanField(default=False)
+    tags              = models.ManyToManyField(Tag, blank=True, related_name='tasks')
+    order             = models.PositiveIntegerField(default=0)
+    status_changed_at = models.DateTimeField(null=True, blank=True)
+    created_at        = models.DateTimeField(auto_now_add=True)
+    updated_at        = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', 'created_at']
+
+    def __str__(self):
+        return self.title
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = Task.objects.filter(pk=self.pk).values('status').first()
+            if old and old['status'] != self.status:
+                self.status_changed_at = timezone.now()
+        super().save(*args, **kwargs)
+
+
+# ─────────────────────────────────────────
+# BUG
+# ─────────────────────────────────────────
+
+class Bug(models.Model):
+    STATUS_CHOICES = [
+        ('open',        'Open'),
+        ('in_progress', 'In Progress'),
+        ('in_review',   'In Review'),
+        ('resolved',    'Resolved'),
+        ('verified',    'Verified'),
+        ('closed',      'Closed'),
+        ('wont_fix',    "Won't Fix"),
+    ]
+    SEVERITY_CHOICES = [
+        ('critical', 'Critical'),
+        ('high',     'High'),
+        ('medium',   'Medium'),
+        ('low',      'Low'),
+    ]
+    PRIORITY_CHOICES = [
+        ('critical', 'Critical'),
+        ('high',     'High'),
+        ('medium',   'Medium'),
+        ('low',      'Low'),
+    ]
+
+    organization      = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='bugs')
+    user_story        = models.ForeignKey(UserStory, on_delete=models.CASCADE, related_name='bugs')
+    title             = models.CharField(max_length=300)
+    description       = models.TextField(blank=True)
+    steps_to_reproduce = models.TextField(blank=True)
+    expected_behavior = models.TextField(blank=True)
+    actual_behavior   = models.TextField(blank=True)
+    severity          = models.CharField(max_length=20, choices=SEVERITY_CHOICES, default='medium')
+    priority          = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium')
+    status            = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
+    assignee          = models.ForeignKey(SprintMember, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_bugs')
+    reported_by       = models.ForeignKey(SprintMember, on_delete=models.SET_NULL, null=True, blank=True, related_name='reported_bugs')
+    tags              = models.ManyToManyField(Tag, blank=True, related_name='bugs')
+    status_changed_at = models.DateTimeField(null=True, blank=True)
+    created_at        = models.DateTimeField(auto_now_add=True)
+    updated_at        = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.title
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = Bug.objects.filter(pk=self.pk).values('status').first()
+            if old and old['status'] != self.status:
+                self.status_changed_at = timezone.now()
+        super().save(*args, **kwargs)
 
 
 # ─────────────────────────────────────────
