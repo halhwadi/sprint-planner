@@ -53,7 +53,20 @@ def get_member(request, org):
 def home(request):
     return redirect('board')
 
+def landing(request):
+    if request.user.is_authenticated:
+        return redirect('sm_panel')
+    return render(request, 'planner/landing.html')
 
+def privacy_policy(request):
+    return render(request, 'planner/privacy_policy.html')
+
+def terms_of_service(request):
+    return render(request, 'planner/terms_of_service.html')
+
+def refund_policy(request):
+    return render(request, 'planner/refund_policy.html')
+    
 # ─────────────────────────────────────────
 # BOARD
 # ─────────────────────────────────────────
