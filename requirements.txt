@@ -1,7 +1,8 @@
-django>=4.2
+django
 gunicorn
 whitenoise
 psycopg2-binary
 dj-database-url
 openpyxl
 resend
+paddle-python-sdk
