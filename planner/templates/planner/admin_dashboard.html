@@ -1,0 +1,321 @@
+{% extends "planner/base_auth.html" %}
+{% block title %}Admin Dashboard — SprintFlow{% endblock %}
+{% block content %}
+<div style="max-width:960px;margin:0 auto;padding:40px 24px">
+
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:36px;flex-wrap:wrap;gap:16px">
+        <div>
+            <h1 style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:white;letter-spacing:-0.5px">
+                Admin Dashboard
+            </h1>
+            <p style="color:#7B78A8;font-size:14px;margin-top:4px">{{ org.name }}</p>
+        </div>
+        <a href="/sm/panel/" style="color:#7B78A8;text-decoration:none;font-size:14px;
+            border:1px solid #1E1A3A;padding:8px 16px;border-radius:6px">
+            ← Back to SM Panel
+        </a>
+    </div>
+
+    <!-- Subscription Status -->
+    {% if subscription %}
+    <div style="background:#13102A;border:1px solid #1E1A3A;border-radius:12px;padding:24px;margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+            <div>
+                <div style="font-size:12px;color:#7B78A8;text-transform:uppercase;letter-spacing:1px;font-weight:600">Subscription</div>
+                <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:white;margin-top:4px">
+                    {{ subscription.get_plan_display }} Plan
+                    {% if org.is_test %}<span style="color:#818CF8;font-size:13px;font-weight:400">(Test Account)</span>{% endif %}
+                </div>
+            </div>
+            <div style="display:flex;gap:12px;align-items:center">
+                {% if subscription.status == 'trialing' %}
+                <span style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);
+                    color:#F59E0B;font-size:12px;font-weight:600;padding:4px 12px;border-radius:100px">
+                    Trial — {{ subscription.days_left_in_trial }} days left
+                </span>
+                {% elif subscription.status == 'active' %}
+                <span style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);
+                    color:#10B981;font-size:12px;font-weight:600;padding:4px 12px;border-radius:100px">Active</span>
+                {% endif %}
+                <a href="/billing/" style="background:#5B45F5;color:white;text-decoration:none;
+                    padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600">
+                    Manage Billing
+                </a>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-top:20px">
+            <div style="background:#0D0B1E;border-radius:8px;padding:16px">
+                <div style="font-size:12px;color:#7B78A8">Members</div>
+                <div style="font-size:20px;font-weight:700;color:white;margin-top:4px">
+                    {{ members.count }}
+                    {% if plan_limits.members %}<span style="font-size:13px;color:#7B78A8">/ {{ plan_limits.members }}</span>{% endif %}
+                </div>
+            </div>
+            <div style="background:#0D0B1E;border-radius:8px;padding:16px">
+                <div style="font-size:12px;color:#7B78A8">Teams</div>
+                <div style="font-size:20px;font-weight:700;color:white;margin-top:4px">
+                    {{ teams.count }}
+                    {% if plan_limits.teams %}<span style="font-size:13px;color:#7B78A8">/ {{ plan_limits.teams }}</span>{% endif %}
+                </div>
+            </div>
+            <div style="background:#0D0B1E;border-radius:8px;padding:16px">
+                <div style="font-size:12px;color:#7B78A8">Streams</div>
+                <div style="font-size:20px;font-weight:700;color:white;margin-top:4px">{{ streams.count }}</div>
+            </div>
+            <div style="background:#0D0B1E;border-radius:8px;padding:16px">
+                <div style="font-size:12px;color:#7B78A8">Pending Invites</div>
+                <div style="font-size:20px;font-weight:700;color:white;margin-top:4px">{{ invites.count }}</div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Teams -->
+    <div style="background:#13102A;border:1px solid #1E1A3A;border-radius:12px;padding:24px;margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+            <h2 style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:white">Teams</h2>
+            <button onclick="showAddTeam()"
+                style="background:#5B45F5;color:white;border:none;padding:8px 16px;
+                border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">
+                + Add Team
+            </button>
+        </div>
+        <div id="add-team-form" style="display:none;background:#0D0B1E;border-radius:8px;padding:16px;margin-bottom:16px">
+            <input id="team-name" type="text" placeholder="Team name"
+                style="width:100%;background:#13102A;border:1px solid #1E1A3A;border-radius:6px;
+                padding:10px 12px;color:white;font-size:14px;margin-bottom:10px;outline:none">
+            <input id="team-desc" type="text" placeholder="Description (optional)"
+                style="width:100%;background:#13102A;border:1px solid #1E1A3A;border-radius:6px;
+                padding:10px 12px;color:white;font-size:14px;margin-bottom:10px;outline:none">
+            <div style="display:flex;gap:8px">
+                <button onclick="addTeam()"
+                    style="background:#5B45F5;color:white;border:none;padding:8px 16px;
+                    border-radius:6px;font-size:13px;cursor:pointer">Save</button>
+                <button onclick="document.getElementById('add-team-form').style.display='none'"
+                    style="background:transparent;color:#7B78A8;border:1px solid #1E1A3A;padding:8px 16px;
+                    border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+            </div>
+        </div>
+        {% if teams %}
+        <div style="display:flex;flex-direction:column;gap:8px">
+            {% for team in teams %}
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                background:#0D0B1E;border-radius:8px;padding:14px 16px">
+                <div>
+                    <div style="font-weight:600;color:white;font-size:14px">{{ team.name }}</div>
+                    {% if team.description %}
+                    <div style="color:#7B78A8;font-size:13px;margin-top:2px">{{ team.description }}</div>
+                    {% endif %}
+                    <div style="color:#7B78A8;font-size:12px;margin-top:4px">
+                        {{ team.members.count }} members
+                    </div>
+                </div>
+                <button onclick="deleteTeam({{ team.id }})"
+                    style="background:transparent;color:#EF4444;border:none;cursor:pointer;font-size:13px">
+                    Delete
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color:#7B78A8;font-size:14px">No teams yet. Add your first team above.</p>
+        {% endif %}
+    </div>
+
+    <!-- Streams -->
+    <div style="background:#13102A;border:1px solid #1E1A3A;border-radius:12px;padding:24px;margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+            <h2 style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:white">Streams</h2>
+            <button onclick="showAddStream()"
+                style="background:#5B45F5;color:white;border:none;padding:8px 16px;
+                border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">
+                + Add Stream
+            </button>
+        </div>
+        <div id="add-stream-form" style="display:none;background:#0D0B1E;border-radius:8px;padding:16px;margin-bottom:16px">
+            <input id="stream-name" type="text" placeholder="Stream name (e.g. Backend, QA, Mobile)"
+                style="width:100%;background:#13102A;border:1px solid #1E1A3A;border-radius:6px;
+                padding:10px 12px;color:white;font-size:14px;margin-bottom:10px;outline:none">
+            <div style="display:flex;gap:8px">
+                <button onclick="addStream()"
+                    style="background:#5B45F5;color:white;border:none;padding:8px 16px;
+                    border-radius:6px;font-size:13px;cursor:pointer">Save</button>
+                <button onclick="document.getElementById('add-stream-form').style.display='none'"
+                    style="background:transparent;color:#7B78A8;border:1px solid #1E1A3A;padding:8px 16px;
+                    border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+            </div>
+        </div>
+        {% if streams %}
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+            {% for stream in streams %}
+            <div style="display:flex;align-items:center;gap:8px;background:#0D0B1E;
+                border-radius:6px;padding:8px 14px">
+                <span style="color:white;font-size:14px">{{ stream.name }}</span>
+                <button onclick="deleteStream({{ stream.id }})"
+                    style="background:transparent;color:#EF4444;border:none;cursor:pointer;font-size:12px">✕</button>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color:#7B78A8;font-size:14px">No streams yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- Members -->
+    <div style="background:#13102A;border:1px solid #1E1A3A;border-radius:12px;padding:24px;margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+            <h2 style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:white">Members</h2>
+            <a href="/sm/invites/send/" style="background:#5B45F5;color:white;text-decoration:none;
+                padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600">
+                + Invite Member
+            </a>
+        </div>
+        {% if members %}
+        <div style="display:flex;flex-direction:column;gap:8px">
+            {% for m in members %}
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                background:#0D0B1E;border-radius:8px;padding:14px 16px;flex-wrap:wrap;gap:12px">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <div style="width:36px;height:36px;border-radius:50%;
+                        background:linear-gradient(135deg,#5B45F5,#7C3AED);
+                        display:flex;align-items:center;justify-content:center;
+                        font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:white">
+                        {{ m.user.first_name|first|upper }}{{ m.user.last_name|first|upper }}
+                    </div>
+                    <div>
+                        <div style="font-weight:600;color:white;font-size:14px">
+                            {{ m.user.get_full_name|default:m.user.username }}
+                        </div>
+                        <div style="color:#7B78A8;font-size:12px">{{ m.user.email }}</div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px">
+                    <span style="background:rgba(91,69,245,0.15);border:1px solid rgba(91,69,245,0.25);
+                        color:#A5B4FC;font-size:11px;font-weight:600;letter-spacing:1px;
+                        text-transform:uppercase;padding:3px 10px;border-radius:100px">
+                        {{ m.get_role_display }}
+                    </span>
+                    <select onchange="changeMemberRole({{ m.id }}, this.value)"
+                        style="background:#13102A;border:1px solid #1E1A3A;color:#7B78A8;
+                        font-size:12px;padding:4px 8px;border-radius:4px;cursor:pointer">
+                        {% for role_key, role_label in roles %}
+                        <option value="{{ role_key }}" {% if m.role == role_key %}selected{% endif %}>
+                            {{ role_label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color:#7B78A8;font-size:14px">No members yet.</p>
+        {% endif %}
+    </div>
+
+    <!-- Pending Invites -->
+    {% if invites %}
+    <div style="background:#13102A;border:1px solid #1E1A3A;border-radius:12px;padding:24px">
+        <h2 style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:white;margin-bottom:20px">
+            Pending Invites
+        </h2>
+        <div style="display:flex;flex-direction:column;gap:8px">
+            {% for invite in invites %}
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                background:#0D0B1E;border-radius:8px;padding:14px 16px;flex-wrap:wrap;gap:12px">
+                <div>
+                    <div style="color:white;font-size:14px;font-weight:500">{{ invite.email }}</div>
+                    <div style="color:#7B78A8;font-size:12px;margin-top:2px">
+                        {{ invite.get_role_display }} · Sent {{ invite.created_at|date:"M d, Y" }}
+                    </div>
+                </div>
+                <button onclick="cancelInvite({{ invite.id }})"
+                    style="background:transparent;color:#EF4444;border:1px solid rgba(239,68,68,0.2);
+                    padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer">
+                    Cancel
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+const csrfToken = '{{ csrf_token }}';
+
+function showAddTeam() {
+    document.getElementById('add-team-form').style.display = 'block';
+    document.getElementById('team-name').focus();
+}
+
+function showAddStream() {
+    document.getElementById('add-stream-form').style.display = 'block';
+    document.getElementById('stream-name').focus();
+}
+
+function addTeam() {
+    const name = document.getElementById('team-name').value.trim();
+    const desc = document.getElementById('team-desc').value.trim();
+    if (!name) return;
+    fetch('/admin/teams/add/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+        body: JSON.stringify({name, description: desc})
+    }).then(r => r.json()).then(d => {
+        if (d.ok) location.reload();
+        else alert(d.error);
+    });
+}
+
+function deleteTeam(id) {
+    if (!confirm('Delete this team? Members will be unassigned.')) return;
+    fetch(`/admin/teams/${id}/delete/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrfToken}
+    }).then(r => r.json()).then(d => { if (d.ok) location.reload(); });
+}
+
+function addStream() {
+    const name = document.getElementById('stream-name').value.trim();
+    if (!name) return;
+    fetch('/sm/streams/add/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+        body: JSON.stringify({name})
+    }).then(r => r.json()).then(d => {
+        if (d.ok) location.reload();
+        else alert(d.error);
+    });
+}
+
+function deleteStream(id) {
+    if (!confirm('Delete this stream?')) return;
+    fetch(`/sm/streams/${id}/delete/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrfToken}
+    }).then(r => r.json()).then(d => { if (d.ok) location.reload(); });
+}
+
+function changeMemberRole(memberId, role) {
+    fetch(`/sm/members/${memberId}/role/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+        body: JSON.stringify({role})
+    }).then(r => r.json()).then(d => {
+        if (!d.ok) alert(d.error || 'Error changing role');
+        else location.reload();
+    });
+}
+
+function cancelInvite(id) {
+    if (!confirm('Cancel this invite?')) return;
+    fetch(`/sm/invites/${id}/cancel/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': csrfToken}
+    }).then(r => r.json()).then(d => { if (d.ok) location.reload(); });
+}
+</script>
+{% endblock %}
