@@ -9,10 +9,16 @@ from django.utils import timezone
 # ─────────────────────────────────────────
 
 class Organization(models.Model):
+    VOTING_SCALE_CHOICES = [
+        ('fibonacci',          'Fibonacci (1,2,3,5,8,13,21)'),
+        ('modified_fibonacci', 'Modified Fibonacci (1,2,3,5,8,13,21,34,55,89)'),
+        ('powers_of_2',        'Powers of 2 (1,2,4,8,16,32)'),
+    ]
     name       = models.CharField(max_length=200)
     slug       = models.SlugField(max_length=200, unique=True)
     owner      = models.ForeignKey(User, on_delete=models.PROTECT, related_name='owned_orgs')
     is_test    = models.BooleanField(default=False)  # test accounts bypass billing
+    voting_scale = models.CharField(max_length=30, choices=VOTING_SCALE_CHOICES, default='fibonacci')
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
