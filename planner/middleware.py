@@ -20,6 +20,7 @@ EXEMPT_URLS = [
     '/refund-policy/',
     '/webhooks/',
     '/admin/',
+    '/admin-dashboard/',
     '/static/',
     '/',
 ]
