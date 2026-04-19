@@ -3,6 +3,7 @@ from django.views.generic import RedirectView
 from . import views
 from . import auth_views
 from . import invite_views
+from . import billing_views, admin_views
 
 urlpatterns = [
     # ── Auth ──
@@ -15,6 +16,23 @@ urlpatterns = [
     path('password-reset/', auth_views.password_reset_request, name='password_reset_request'),
     path('password-reset/<uuid:token>/', auth_views.password_reset_confirm, name='password_reset_confirm'),
     path('password-reset/done/', auth_views.password_reset_done, name='password_reset_done'),
+
+    # ── Billing (Tasks 6 & 7) ──
+    path('pricing/', billing_views.pricing, name='pricing'),
+    path('billing/', billing_views.billing_portal, name='billing_portal'),
+    path('billing/checkout/', billing_views.create_checkout, name='create_checkout'),
+    path('billing/cancel/', billing_views.cancel_subscription, name='cancel_subscription'),
+    path('webhooks/paddle/', billing_views.paddle_webhook, name='paddle_webhook'),
+    
+    # ── Admin Dashboard (Task 9) ──
+    path('admin-dashboard/', admin_views.admin_dashboard, name='admin_dashboard'),
+    path('admin/org/settings/', admin_views.update_org_settings, name='update_org_settings'),
+    path('admin/teams/add/', admin_views.add_team, name='add_team'),
+    path('admin/teams/<int:team_id>/edit/', admin_views.edit_team, name='edit_team'),
+    path('admin/teams/<int:team_id>/delete/', admin_views.delete_team, name='delete_team'),
+    path('admin/members/<int:member_id>/team/', admin_views.update_member_team, name='update_member_team'),
+    path('admin/members/<int:member_id>/stream/', admin_views.update_member_stream, name='update_member_stream'),
+    path('admin/streams/<int:stream_id>/edit/', admin_views.edit_stream, name='edit_stream'),
 
     # ── Legacy redirects ──
     path('', views.landing, name='home'),
