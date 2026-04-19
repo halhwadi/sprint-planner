@@ -1,0 +1,165 @@
+{% extends "planner/base_auth.html" %}
+{% block title %}Billing — SprintFlow{% endblock %}
+{% block content %}
+<div style="max-width:680px;margin:0 auto;padding:40px 24px">
+    <h1 style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:white;
+        letter-spacing:-0.5px;margin-bottom:32px">Billing & Subscription</h1>
+
+    {% if subscription %}
+    <!-- Current Plan -->
+    <div style="background:#13102A;border:1px solid #1E1A3A;border-radius:12px;padding:28px;margin-bottom:24px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
+            <div>
+                <div style="font-size:13px;color:#7B78A8;text-transform:uppercase;letter-spacing:1px;font-weight:600">
+                    Current Plan
+                </div>
+                <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:white;margin-top:4px">
+                    {{ subscription.get_plan_display }}
+                </div>
+            </div>
+            <div style="text-align:right">
+                {% if subscription.status == 'trialing' %}
+                <span style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);
+                    color:#F59E0B;font-size:12px;font-weight:600;padding:4px 12px;border-radius:100px">
+                    Trial — {{ subscription.days_left_in_trial }} days left
+                </span>
+                {% elif subscription.status == 'active' %}
+                <span style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);
+                    color:#10B981;font-size:12px;font-weight:600;padding:4px 12px;border-radius:100px">
+                    Active
+                </span>
+                {% elif subscription.status == 'past_due' %}
+                <span style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);
+                    color:#EF4444;font-size:12px;font-weight:600;padding:4px 12px;border-radius:100px">
+                    Payment Failed
+                </span>
+                {% elif subscription.status == 'cancelled' %}
+                <span style="background:rgba(107,114,128,0.1);border:1px solid rgba(107,114,128,0.2);
+                    color:#6B7280;font-size:12px;font-weight:600;padding:4px 12px;border-radius:100px">
+                    Cancelled
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if subscription.status == 'trialing' %}
+        <div style="margin-top:20px;padding:16px;background:rgba(245,158,11,0.05);
+            border:1px solid rgba(245,158,11,0.15);border-radius:8px">
+            <p style="color:#F59E0B;font-size:14px;margin:0">
+                ⚠️ Your trial ends in <strong>{{ subscription.days_left_in_trial }} days</strong>.
+                Subscribe now to keep access.
+            </p>
+        </div>
+        {% endif %}
+
+        {% if subscription.status == 'past_due' %}
+        <div style="margin-top:20px;padding:16px;background:rgba(239,68,68,0.05);
+            border:1px solid rgba(239,68,68,0.15);border-radius:8px">
+            <p style="color:#EF4444;font-size:14px;margin:0">
+                ⚠️ Your last payment failed. Update your payment method to avoid losing access.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Plan Features -->
+    <div style="background:#13102A;border:1px solid #1E1A3A;border-radius:12px;padding:28px;margin-bottom:24px">
+        <div style="font-size:13px;color:#7B78A8;text-transform:uppercase;letter-spacing:1px;
+            font-weight:600;margin-bottom:16px">Plan Features</div>
+        {% with limits=plan_limits|get_item:subscription.plan %}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="font-size:14px;color:#7B78A8">
+                Team Members:
+                <strong style="color:white">
+                    {% if limits.members %}Up to {{ limits.members }}{% else %}Unlimited{% endif %}
+                </strong>
+            </div>
+            <div style="font-size:14px;color:#7B78A8">
+                Teams:
+                <strong style="color:white">
+                    {% if limits.teams %}Up to {{ limits.teams }}{% else %}Unlimited{% endif %}
+                </strong>
+            </div>
+            <div style="font-size:14px;color:#7B78A8">
+                Sessions/month:
+                <strong style="color:white">
+                    {% if limits.sessions_per_month %}{{ limits.sessions_per_month }}{% else %}Unlimited{% endif %}
+                </strong>
+            </div>
+            <div style="font-size:14px;color:#7B78A8">
+                Excel Import/Export:
+                <strong style="color:{% if limits.excel %}#10B981{% else %}#EF4444{% endif %}">
+                    {% if limits.excel %}✓ Yes{% else %}✗ No{% endif %}
+                </strong>
+            </div>
+            <div style="font-size:14px;color:#7B78A8">
+                AI Task Generation:
+                <strong style="color:{% if limits.ai %}#10B981{% else %}#EF4444{% endif %}">
+                    {% if limits.ai %}✓ Yes{% else %}✗ No{% endif %}
+                </strong>
+            </div>
+            <div style="font-size:14px;color:#7B78A8">
+                Analytics:
+                <strong style="color:{% if limits.analytics %}#10B981{% else %}#EF4444{% endif %}">
+                    {% if limits.analytics %}✓ Yes{% else %}✗ No{% endif %}
+                </strong>
+            </div>
+        </div>
+        {% endwith %}
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+        {% if subscription.status in 'trialing,active' %}
+        <a href="/pricing/"
+            style="background:#5B45F5;color:white;text-decoration:none;padding:12px 24px;
+            border-radius:8px;font-size:14px;font-weight:600">
+            {% if subscription.status == 'trialing' %}Subscribe Now{% else %}Change Plan{% endif %}
+        </a>
+        {% endif %}
+
+        {% if subscription.paddle_subscription_id and subscription.status == 'active' %}
+        <button onclick="cancelSubscription()"
+            style="background:transparent;color:#EF4444;border:1px solid rgba(239,68,68,0.3);
+            padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+            Cancel Subscription
+        </button>
+        {% endif %}
+
+        <a href="/sm/panel/"
+            style="background:transparent;color:#7B78A8;border:1px solid #1E1A3A;text-decoration:none;
+            padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600">
+            ← Back to Dashboard
+        </a>
+    </div>
+
+    {% else %}
+    <div style="background:#13102A;border:1px solid #1E1A3A;border-radius:12px;padding:40px;text-align:center">
+        <p style="color:#7B78A8;margin-bottom:24px">No active subscription found.</p>
+        <a href="/pricing/" style="background:#5B45F5;color:white;text-decoration:none;
+            padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600">
+            View Plans →
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function cancelSubscription() {
+    if (!confirm('Are you sure you want to cancel? You will keep access until end of billing period.')) return;
+    fetch('/billing/cancel/', {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            alert('Subscription cancelled. You will keep access until end of billing period.');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'Please try again'));
+        }
+    });
+}
+</script>
+{% endblock %}
