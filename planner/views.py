@@ -21,6 +21,15 @@ BANDWIDTH_LIMIT = 8
 # HELPERS
 # ─────────────────────────────────────────
 
+def get_voting_scale(org):
+    """Get voting scale based on org settings."""
+    scales = {
+        'fibonacci':          [1, 2, 3, 5, 8, 13, 21],
+        'modified_fibonacci': [1, 2, 3, 5, 8, 13, 21, 34, 55, 89],
+        'powers_of_2':        [1, 2, 4, 8, 16, 32],
+    }
+    return scales.get(org.voting_scale, scales['fibonacci'])
+    
 def get_org(request):
     """Get active org for current user.
     If user belongs to multiple orgs, respects session selection."""
@@ -131,7 +140,7 @@ def vote_room(request, us_id):
     all_members = SprintMember.objects.filter(
         organization=org, is_active=True
     ).select_related('user', 'stream')
-    fibonacci  = [1, 2, 3, 5, 8, 13]
+    fibonacci = get_voting_scale(org)
 
     my_vote = None
     if member:
@@ -207,7 +216,9 @@ def submit_vote(request, us_id):
 
     data   = json.loads(request.body)
     points = int(data.get('points'))
-    if points not in [1, 2, 3, 5, 8, 13]:
+    org    = get_org(request)
+    scale  = get_voting_scale(org)
+    if points not in scale:
         return JsonResponse({'error': 'Invalid points'}, status=400)
 
     Vote.objects.update_or_create(
