@@ -100,3 +100,48 @@ SESSION_COOKIE_AGE  = 86400 * 7
 
 # App URL — used in emails
 APP_URL = os.environ.get('APP_URL', 'https://getsprintflow.co')
+
+# Paddle
+PADDLE_API_KEY           = os.environ.get('PADDLE_API_KEY', '')
+PADDLE_WEBHOOK_SECRET    = os.environ.get('PADDLE_WEBHOOK_SECRET', '')
+PADDLE_ENVIRONMENT       = os.environ.get('PADDLE_ENVIRONMENT', 'sandbox')
+
+PADDLE_PRICES = {
+    'starter_monthly':  os.environ.get('PADDLE_STARTER_MONTHLY', ''),
+    'starter_annual':   os.environ.get('PADDLE_STARTER_ANNUAL', ''),
+    'pro_monthly':      os.environ.get('PADDLE_PRO_MONTHLY', ''),
+    'pro_annual':       os.environ.get('PADDLE_PRO_ANNUAL', ''),
+    'business_monthly': os.environ.get('PADDLE_BUSINESS_MONTHLY', ''),
+    'business_annual':  os.environ.get('PADDLE_BUSINESS_ANNUAL', ''),
+}
+
+# Plan limits
+PLAN_LIMITS = {
+    'starter': {
+        'members':          10,
+        'teams':            1,
+        'sessions_per_month': 5,
+        'excel':            False,
+        'backlog':          False,
+        'ai':               False,
+        'analytics':        False,
+    },
+    'pro': {
+        'members':          30,
+        'teams':            5,
+        'sessions_per_month': None,  # unlimited
+        'excel':            True,
+        'backlog':          True,
+        'ai':               False,
+        'analytics':        False,
+    },
+    'business': {
+        'members':          None,  # unlimited
+        'teams':            None,
+        'sessions_per_month': None,
+        'excel':            True,
+        'backlog':          True,
+        'ai':               True,
+        'analytics':        True,
+    },
+}
