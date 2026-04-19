@@ -1,0 +1,110 @@
+{% extends "planner/base_auth.html" %}
+{% block title %}Pricing — SprintFlow{% endblock %}
+{% block content %}
+<div style="max-width:900px;margin:0 auto;padding:40px 24px">
+    <div style="text-align:center;margin-bottom:48px">
+        <h1 style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:white;letter-spacing:-1px">
+            Choose your plan
+        </h1>
+        <p style="color:#7B78A8;margin-top:8px">Start free for 14 days. No credit card required.</p>
+
+        <!-- Billing toggle -->
+        <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-top:24px">
+            <span id="monthly-label" style="font-size:14px;color:white;font-weight:500">Monthly</span>
+            <button onclick="toggleBilling()" id="toggle"
+                style="width:48px;height:26px;background:#1E1A3A;border-radius:100px;
+                       border:none;cursor:pointer;position:relative;transition:background 0.3s">
+                <span id="toggle-dot" style="position:absolute;top:3px;left:3px;width:20px;height:20px;
+                    background:white;border-radius:50%;transition:transform 0.3s;display:block"></span>
+            </button>
+            <span id="annual-label" style="font-size:14px;color:#7B78A8;font-weight:500">Annual</span>
+            <span style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);
+                color:#10B981;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;
+                padding:3px 10px;border-radius:100px">Save 30%</span>
+        </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px">
+        {% for plan_key, label, desc in plans %}
+        <div style="background:#13102A;border:1px solid {% if plan_key == 'pro' %}#5B45F5{% else %}#1E1A3A{% endif %};
+            border-radius:16px;padding:32px;position:relative">
+            {% if plan_key == 'pro' %}
+            <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);
+                background:#5B45F5;color:white;font-size:11px;font-weight:700;letter-spacing:1.5px;
+                text-transform:uppercase;padding:4px 16px;border-radius:100px;white-space:nowrap">
+                Most Popular
+            </div>
+            {% endif %}
+            <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:white">{{ label }}</div>
+            <div style="color:#7B78A8;font-size:13px;margin:4px 0 20px">{{ desc }}</div>
+            <div id="price-{{ plan_key }}" style="font-family:'Syne',sans-serif;font-size:44px;font-weight:800;color:white;line-height:1">
+                <sup style="font-size:20px;vertical-align:super">$</sup>
+                <span class="price-amount" data-monthly="{{ monthly_prices|get_item:plan_key }}" data-annual="{{ annual_prices|get_item:plan_key }}">
+                    {{ monthly_prices|get_item:plan_key }}
+                </span>
+                <sub style="font-size:15px;font-weight:400;color:#7B78A8">/mo</sub>
+            </div>
+            <div style="height:1px;background:#1E1A3A;margin:20px 0"></div>
+            <button onclick="openCheckout('{{ plan_key }}')"
+                style="width:100%;padding:12px;border-radius:8px;font-size:15px;font-weight:600;
+                cursor:pointer;transition:all 0.2s;
+                {% if plan_key == 'pro' %}background:#5B45F5;color:white;border:none;
+                {% else %}background:transparent;color:white;border:1px solid #1E1A3A;{% endif %}">
+                Start free trial →
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Paddle.js -->
+<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+<script>
+    const environment = '{{ environment }}';
+    const prices = {{ prices_json|safe }};
+    let isAnnual = false;
+
+    // Initialize Paddle
+    if (environment === 'sandbox') {
+        Paddle.Environment.set('sandbox');
+    }
+    Paddle.Initialize({ token: '{{ client_token }}' });
+
+    function toggleBilling() {
+        isAnnual = !isAnnual;
+        const toggle = document.getElementById('toggle');
+        const dot    = document.getElementById('toggle-dot');
+        toggle.style.background = isAnnual ? '#5B45F5' : '#1E1A3A';
+        dot.style.transform     = isAnnual ? 'translateX(22px)' : 'translateX(0)';
+        document.getElementById('monthly-label').style.color = isAnnual ? '#7B78A8' : 'white';
+        document.getElementById('annual-label').style.color  = isAnnual ? 'white' : '#7B78A8';
+
+        document.querySelectorAll('.price-amount').forEach(el => {
+            el.textContent = isAnnual ? el.dataset.annual : el.dataset.monthly;
+        });
+    }
+
+    function openCheckout(plan) {
+        const billing  = isAnnual ? 'annual' : 'monthly';
+        const key      = plan + '_' + billing;
+        const priceId  = prices[key];
+
+        if (!priceId) {
+            alert('Price not configured. Please contact support.');
+            return;
+        }
+
+        Paddle.Checkout.open({
+            items: [{ priceId: priceId, quantity: 1 }],
+            customer: { email: '{{ request.user.email }}' },
+            customData: {
+                org_id:   '{{ org.id }}',
+                org_slug: '{{ org.slug }}',
+                plan:     plan,
+                billing:  billing,
+            },
+            successUrl: '{{ app_url }}/onboarding/',
+        });
+    }
+</script>
+{% endblock %}
