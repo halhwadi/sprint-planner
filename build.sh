@@ -21,7 +21,13 @@ if not User.objects.filter(username='scrummaster').exists():
     print('Superuser created')
 else:
     user = User.objects.get(username='scrummaster')
-    print('Superuser already exists')
+    # Ensure email and active status are set
+    user.email      = 'admin@getsprintflow.co'
+    user.is_active  = True
+    user.first_name = 'Scrum'
+    user.last_name  = 'Master'
+    user.save()
+    print('Superuser updated')
 
 if not Organization.objects.exists():
     org = Organization.objects.create(
