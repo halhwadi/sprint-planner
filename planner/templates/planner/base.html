@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}Sprint Planner{% endblock %}</title>
+<title>{% block title %}SprintFlow{% endblock %}</title>
 <style>
   :root {
     --bg: #0f1117; --surface: #1a1d27; --card: #22263a;
-    --border: #2e3350; --accent: #6366f1; --accent2: #818cf8;
+    --border: #2e3350; --accent: #5B45F5; --accent2: #818cf8;
     --green: #22c55e; --red: #ef4444; --yellow: #f59e0b; --blue: #38bdf8;
     --text: #e2e8f0; --muted: #94a3b8; --white: #fff;
     --radius: 10px;
@@ -17,10 +17,10 @@
   a { color: var(--accent2); text-decoration: none; }
   .navbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
   .navbar .brand { font-size: 1.2rem; font-weight: 700; color: var(--white); display: flex; align-items: center; gap: 10px; }
-  .navbar .brand span { background: var(--accent); border-radius: 6px; padding: 2px 8px; font-size: 0.75rem; }
+  .navbar .brand span { color: var(--accent2); }
   .navbar .nav-links { display: flex; gap: 16px; align-items: center; font-size: 0.9rem; }
   .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.15s; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.15s; text-decoration: none; }
   .btn-primary { background: var(--accent); color: var(--white); }
   .btn-primary:hover { background: var(--accent2); }
   .btn-success { background: var(--green); color: var(--white); }
@@ -52,41 +52,70 @@
   .toast { position: fixed; bottom: 24px; right: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; z-index: 999; font-size: 0.875rem; opacity: 0; transition: opacity 0.3s; }
   .toast.show { opacity: 1; }
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media(max-width:768px) { .grid-2 { grid-template-columns: 1fr; } }
+  @media(max-width:768px) { .grid-2 { grid-template-columns: 1fr; } .navbar .nav-links { gap: 8px; } }
   .section-title { font-size: 1rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
   .empty-state { text-align: center; padding: 48px; color: var(--muted); }
   .flex { display: flex; } .items-center { align-items: center; } .justify-between { justify-content: space-between; }
   .gap-2 { gap: 8px; } .gap-3 { gap: 12px; } .gap-4 { gap: 16px; }
   .mt-1 { margin-top: 4px; } .mt-2 { margin-top: 8px; } .mt-3 { margin-top: 12px; } .mt-4 { margin-top: 16px; }
+  .mb-2 { margin-bottom: 8px; } .mb-3 { margin-bottom: 12px; } .mb-4 { margin-bottom: 16px; }
   .text-sm { font-size: 0.85rem; } .text-muted { color: var(--muted); }
   .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .flex-wrap { flex-wrap: wrap; }
+  .trial-banner { background: rgba(245,158,11,0.1); border-bottom: 1px solid rgba(245,158,11,0.2); padding: 8px 24px; text-align: center; font-size: 0.85rem; color: #f59e0b; }
+  .past-due-banner { background: rgba(239,68,68,0.1); border-bottom: 1px solid rgba(239,68,68,0.2); padding: 8px 24px; text-align: center; font-size: 0.85rem; color: #ef4444; }
 </style>
 </head>
 <body>
+
+{% if request.user.is_authenticated %}
+  {% with org=request.user.org_memberships.first.organization %}
+    {% if org %}
+      {% with sub=org.subscription %}
+        {% if sub.status == 'trialing' %}
+        <div class="trial-banner">
+          ⏳ Trial ends in {{ sub.days_left_in_trial }} days —
+          <a href="/billing/" style="color:#f59e0b;font-weight:700;">Subscribe now</a>
+        </div>
+        {% elif sub.status == 'past_due' %}
+        <div class="past-due-banner">
+          ⚠️ Payment failed — <a href="/billing/" style="color:#ef4444;font-weight:700;">Update billing</a>
+          to avoid losing access.
+        </div>
+        {% endif %}
+      {% endwith %}
+    {% endif %}
+  {% endwith %}
+{% endif %}
+
 <nav class="navbar">
-  <div class="brand">🚀 Sprint Planner <span>ADX</span></div>
+  <a href="/" class="brand">⚡ Sprint<span>Flow</span></a>
   <div class="nav-links">
-    {% if request.user.is_authenticated and request.user.is_staff %}
-      <span style="color:var(--green);font-weight:600;">👑 Scrum Master</span>
-      {% if request.session.member_name %}
-        <span style="color:var(--accent2);font-size:0.8rem;">voting as {{ request.session.member_name }}</span>
+    {% if request.user.is_authenticated %}
+      <a href="{% url 'board' %}" class="btn btn-ghost btn-sm">Board</a>
+      {% if is_sm %}
+        <a href="{% url 'sm_panel' %}" class="btn btn-ghost btn-sm">SM Panel</a>
       {% endif %}
-      <a href="{% url 'sm_panel' %}">SM Panel</a>
-      <a href="{% url 'board' %}">Board</a>
-      <a href="{% url 'sm_pick_member' %}" class="btn btn-ghost btn-sm">Switch Identity</a>
-      <a href="{% url 'sm_logout' %}" class="btn btn-ghost btn-sm">Logout</a>
-    {% elif request.session.member_name %}
-      <span style="color:var(--accent2);">👤 {{ request.session.member_name }}</span>
-      <a href="{% url 'board' %}">Board</a>
-      <a href="{% url 'join' %}" class="btn btn-ghost btn-sm">Switch</a>
+      {% with membership=request.user.org_memberships.first %}
+        {% if membership.role == 'admin' %}
+          <a href="{% url 'admin_dashboard' %}" class="btn btn-ghost btn-sm">⚙️ Admin</a>
+        {% endif %}
+      {% endwith %}
+      <a href="/billing/" class="btn btn-ghost btn-sm">💳 Billing</a>
+      <span style="color:var(--accent2);font-size:0.85rem;">
+        👤 {{ request.user.get_full_name|default:request.user.username }}
+      </span>
+      <a href="{% url 'user_logout' %}" class="btn btn-ghost btn-sm">Logout</a>
     {% else %}
-      <a href="{% url 'join' %}" class="btn btn-primary btn-sm">Join</a>
-      <a href="{% url 'sm_login' %}" class="btn btn-ghost btn-sm">SM Login</a>
+      <a href="{% url 'user_login' %}" class="btn btn-ghost btn-sm">Log in</a>
+      <a href="{% url 'signup' %}" class="btn btn-primary btn-sm">Sign up</a>
     {% endif %}
   </div>
 </nav>
+
 <div id="toast" class="toast"></div>
 {% block content %}{% endblock %}
+
 <script>
 function toast(msg, type='info') {
   const t = document.getElementById('toast');
