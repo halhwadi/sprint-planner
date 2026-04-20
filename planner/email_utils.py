@@ -41,7 +41,7 @@ def send_verification_email(user, token):
 
 
 def send_password_reset_email(user, token):
-    url = f"{settings.APP_URL}/reset-password/{token}/"
+    url = f"{settings.APP_URL}/password-reset/{token}/"
     send_email(
         to=user.email,
         subject="Reset your SprintFlow password",
