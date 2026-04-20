@@ -1,5 +1,5 @@
 {% extends 'planner/base.html' %}
-{% block title %}SM Panel{% endblock %}
+{% block title %}SM Panel — SprintFlow{% endblock %}
 {% block content %}
 <div class="container">
   <h1 style="font-size:1.4rem;font-weight:700;margin:16px 0 4px;">👑 Scrum Master Panel</h1>
@@ -27,12 +27,13 @@
               {{ s.user_stories.count }} stories · {{ s.total_sp }} SP
               {% if s.start_date %}<br>{{ s.start_date }} → {{ s.end_date }}{% endif %}
             </div>
-            <div class="flex gap-2">
+            <div class="flex gap-2 flex-wrap">
               {% if not s.is_active %}
               <button class="btn btn-success btn-sm" onclick="setActiveSprint({{ s.id }})">Set Active</button>
               {% endif %}
               <a href="{% url 'import_stories' s.id %}" class="btn btn-ghost btn-sm">⬆️ Import</a>
-              <button class="btn btn-ghost btn-sm" onclick="openEditSprint({{ s.id }}, '{{ s.name }}', '{{ s.goal }}', '{{ s.start_date }}', '{{ s.end_date }}', {{ s.is_active|yesno:'true,false' }})">✏️ Edit</button>
+              <a href="{% url 'export_sprint' s.id %}" class="btn btn-ghost btn-sm">⬇️ Export</a>
+              <button class="btn btn-ghost btn-sm" onclick="openEditSprint({{ s.id }}, '{{ s.name }}', '{{ s.goal }}', '{{ s.start_date }}', '{{ s.end_date }}', {{ s.is_active|yesno:'true,false' }})">✏️</button>
               <button class="btn btn-danger btn-sm" onclick="deleteSprint({{ s.id }}, '{{ s.name }}')">🗑️</button>
             </div>
           </div>
@@ -49,16 +50,18 @@
       <div class="card">
         <div class="flex items-center justify-between mb-4">
           <div class="section-title" style="margin:0;">👥 Team Members ({{ members.count }})</div>
-          <button class="btn btn-primary btn-sm" onclick="openModal('addMemberModal')">+ Add</button>
+          <a href="/admin-dashboard/" class="btn btn-primary btn-sm">+ Invite</a>
         </div>
         {% regroup members by stream as stream_groups %}
         {% for group in stream_groups %}
         <div class="mb-3">
-          <div class="text-sm text-muted mb-1" style="font-weight:600;">{{ group.grouper }}</div>
+          <div class="text-sm text-muted mb-1" style="font-weight:600;">
+            {{ group.grouper.name|default:"No Stream" }}
+          </div>
           {% for m in group.list %}
           <div class="flex items-center justify-between" style="background:var(--surface);border-radius:6px;padding:8px 12px;margin-bottom:4px;">
-            <span style="font-size:0.875rem;">{{ m.name }}</span>
-            <button class="btn btn-danger btn-sm" onclick="removeMember({{ m.id }}, '{{ m.name }}')">Remove</button>
+            <span style="font-size:0.875rem;">{{ m.display_name }}</span>
+            <button class="btn btn-danger btn-sm" onclick="removeMember({{ m.id }}, '{{ m.display_name }}')">Remove</button>
           </div>
           {% endfor %}
         </div>
@@ -75,8 +78,13 @@
         {% for bw in bandwidth %}
         <div style="margin-bottom:12px;">
           <div class="flex items-center justify-between mb-1">
-            <span style="font-size:0.85rem;">{{ bw.member.name }} <span class="badge badge-stream">{{ bw.member.stream }}</span></span>
-            <span style="font-size:0.85rem;font-weight:700;color:{% if bw.over %}var(--red){% else %}var(--text){% endif %};">{{ bw.total }}/8 SP</span>
+            <span style="font-size:0.85rem;">
+              {{ bw.member.display_name }}
+              <span class="badge badge-stream">{{ bw.member.stream.name|default:"—" }}</span>
+            </span>
+            <span style="font-size:0.85rem;font-weight:700;color:{% if bw.over %}var(--red){% else %}var(--text){% endif %};">
+              {{ bw.total }}/8 SP
+            </span>
           </div>
           <div class="bandwidth-bar">
             <div class="bandwidth-fill" style="width:{% widthratio bw.total 8 100 %}%;background:{% if bw.over %}var(--red){% elif bw.total >= 6 %}var(--yellow){% else %}var(--green){% endif %};"></div>
@@ -103,13 +111,13 @@
           </div>
           {% for story in group.list %}
           <div style="background:var(--surface);border-radius:8px;padding:12px;margin-bottom:8px;border:1px solid var(--border);">
-            <div class="flex items-center justify-between" style="flex-wrap:wrap;gap:8px;">
+            <div class="flex items-center justify-between flex-wrap gap-2">
               <div class="flex items-center gap-3">
                 <div class="sp-chip {% if not story.final_sp %}none{% endif %}">{{ story.final_sp|default:"?" }}</div>
                 <div>
                   <div style="font-weight:600;font-size:0.875rem;">{{ story.title }}</div>
                   <div class="text-sm text-muted">
-                    {% if story.owner %}Owner: {{ story.owner.name }}{% else %}No owner{% endif %}
+                    {% if story.owner %}Owner: {{ story.owner.display_name }}{% else %}No owner{% endif %}
                     {% if story.vote_average %} · Avg: {{ story.vote_average }}{% endif %}
                   </div>
                 </div>
@@ -132,6 +140,7 @@
         {% endfor %}
       </div>
     </div>
+
   </div>
 </div>
 
@@ -176,25 +185,6 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('editSprintModal')">Cancel</button>
       <button class="btn btn-primary" onclick="submitEditSprint()">Save</button>
-    </div>
-  </div>
-</div>
-
-<!-- Add Member Modal -->
-<div class="modal-overlay" id="addMemberModal">
-  <div class="modal">
-    <h3>➕ Add Team Member</h3>
-    <div class="form-group"><label>Full Name *</label><input type="text" id="memberName" placeholder="e.g. Ahmed Al-Rashid"></div>
-    <div class="form-group">
-      <label>Stream *</label>
-      <select id="memberStream">
-        <option value="">-- Select Stream --</option>
-        {% for s in streams %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-      </select>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('addMemberModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitAddMember()">Add Member</button>
     </div>
   </div>
 </div>
@@ -252,20 +242,6 @@ async function deleteSprint(id, name) {
   if (!confirm(`Delete sprint "${name}"? Stories will remain but lose sprint assignment.`)) return;
   const res = await api(`/sm/sprints/${id}/delete/`, 'POST');
   if (res.ok) { toast('Sprint deleted', 'success'); location.reload(); }
-}
-
-async function submitAddMember() {
-  const name = document.getElementById('memberName').value.trim();
-  const stream = document.getElementById('memberStream').value;
-  if (!name || !stream) { toast('Name and stream required', 'error'); return; }
-  const formData = new FormData();
-  formData.append('name', name);
-  formData.append('stream', stream);
-  formData.append('csrfmiddlewaretoken', getCookie('csrftoken'));
-  const res = await fetch('/sm/members/add/', { method: 'POST', body: formData });
-  const data = await res.json();
-  if (data.ok) { toast(`${name} added!`, 'success'); closeModal('addMemberModal'); location.reload(); }
-  else toast(data.error, 'error');
 }
 
 async function removeMember(id, name) {
