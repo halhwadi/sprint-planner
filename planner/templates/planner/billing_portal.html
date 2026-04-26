@@ -66,47 +66,51 @@
     <div style="background:#13102A;border:1px solid #1E1A3A;border-radius:12px;padding:28px;margin-bottom:24px">
         <div style="font-size:13px;color:#7B78A8;text-transform:uppercase;letter-spacing:1px;
             font-weight:600;margin-bottom:16px">Plan Features</div>
-        {% with limits=plan_limits|get_item:subscription.plan %}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div style="font-size:14px;color:#7B78A8">
-                Team Members:
-                <strong style="color:white">
-                    {% if limits.members %}Up to {{ limits.members }}{% else %}Unlimited{% endif %}
-                </strong>
-            </div>
-            <div style="font-size:14px;color:#7B78A8">
-                Teams:
-                <strong style="color:white">
-                    {% if limits.teams %}Up to {{ limits.teams }}{% else %}Unlimited{% endif %}
-                </strong>
-            </div>
-            <div style="font-size:14px;color:#7B78A8">
-                Sessions/month:
-                <strong style="color:white">
-                    {% if limits.sessions_per_month %}{{ limits.sessions_per_month }}{% else %}Unlimited{% endif %}
-                </strong>
-            </div>
-            <div style="font-size:14px;color:#7B78A8">
-                Excel Import/Export:
-                <strong style="color:{% if limits.excel %}#10B981{% else %}#EF4444{% endif %}">
-                    {% if limits.excel %}✓ Yes{% else %}✗ No{% endif %}
-                </strong>
-            </div>
-            <div style="font-size:14px;color:#7B78A8">
-                AI Sprint Intelligence:
-                <strong style="color:{% if limits.ai %}#10B981{% else %}#EF4444{% endif %}">
-                    {% if limits.ai %}✓ Yes{% else %}✗ No{% endif %}
-                </strong>
-            </div>
-            <div style="font-size:14px;color:#7B78A8">
-                Analytics:
-                <strong style="color:{% if limits.analytics %}#10B981{% else %}#EF4444{% endif %}">
-                    {% if limits.analytics %}✓ Yes{% else %}✗ No{% endif %}
-                </strong>
-            </div>
-        </div>
-        {% endwith %}
+        <div style="font-size:13px;color:#7B78A8;text-transform:uppercase;letter-spacing:1px;
+    font-weight:600;margin-bottom:16px">Plan Features</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="font-size:14px;color:#7B78A8">
+        Team Members:
+        <strong style="color:white">
+            {% if subscription.plan == 'starter' %}Up to 10
+            {% elif subscription.plan == 'pro' %}Up to 30
+            {% else %}Unlimited{% endif %}
+        </strong>
     </div>
+    <div style="font-size:14px;color:#7B78A8">
+        Teams:
+        <strong style="color:white">
+            {% if subscription.plan == 'starter' %}1
+            {% elif subscription.plan == 'pro' %}Up to 5
+            {% else %}Unlimited{% endif %}
+        </strong>
+    </div>
+    <div style="font-size:14px;color:#7B78A8">
+        Sessions/month:
+        <strong style="color:white">
+            {% if subscription.plan == 'starter' %}5
+            {% else %}Unlimited{% endif %}
+        </strong>
+    </div>
+    <div style="font-size:14px;color:#7B78A8">
+        Excel Import/Export:
+        <strong style="color:{% if subscription.plan != 'starter' %}#10B981{% else %}#EF4444{% endif %}">
+            {% if subscription.plan != 'starter' %}✓ Yes{% else %}✗ No{% endif %}
+        </strong>
+    </div>
+    <div style="font-size:14px;color:#7B78A8">
+        AI Sprint Intelligence:
+        <strong style="color:{% if subscription.plan == 'business' %}#10B981{% else %}#EF4444{% endif %}">
+            {% if subscription.plan == 'business' %}✓ Yes{% else %}✗ No{% endif %}
+        </strong>
+    </div>
+    <div style="font-size:14px;color:#7B78A8">
+        Analytics:
+        <strong style="color:{% if subscription.plan == 'business' %}#10B981{% else %}#EF4444{% endif %}">
+            {% if subscription.plan == 'business' %}✓ Yes{% else %}✗ No{% endif %}
+        </strong>
+    </div>
+</div>
 
     <!-- Actions -->
     <div style="display:flex;gap:12px;flex-wrap:wrap">
