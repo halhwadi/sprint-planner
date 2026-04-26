@@ -318,6 +318,7 @@ class UserStory(models.Model):
     sprint            = models.ForeignKey(Sprint, null=True, blank=True, on_delete=models.SET_NULL, related_name='user_stories')
     title             = models.CharField(max_length=300)
     description       = models.TextField(blank=True)
+    acceptance_criteria = models.TextField(blank=True)
     owner             = models.ForeignKey(SprintMember, null=True, blank=True, on_delete=models.SET_NULL, related_name='owned_stories')
     priority          = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium')
     involved_streams  = models.JSONField(default=list)
