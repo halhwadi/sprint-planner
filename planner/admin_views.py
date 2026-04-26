@@ -21,9 +21,9 @@ def admin_dashboard(request):
     from .views import get_org
     org          = get_org(request)
     subscription = getattr(org, 'subscription', None)
-    members      = OrganizationMember.objects.filter(
-        organization=org
-    ).select_related('user', 'user__sprint_memberships')
+    members = OrganizationMember.objects.filter(
+    organization=org
+    ).select_related('user').prefetch_related('user__sprint_memberships')
     teams        = Team.objects.filter(organization=org)
     streams      = Stream.objects.filter(organization=org)
     invites      = InviteToken.objects.filter(organization=org, status='pending')
